@@ -226,9 +226,22 @@ Deploy on Render, Railway, Fly.io, or a $5 VPS. Put it behind HTTPS.
 |------|--------------|--------------|
 | `regime_detection.py` | `python regime_detection.py --ticker BTC` | regime table, chart, saved model |
 | `regime_detection.py` | `--tickers BTC,ETH,GOLD` | multi-asset comparison |
-| `streamlit_app.py` | `streamlit run streamlit_app.py` | full web dashboard + backtest |
+| `streamlit_app.py` | `streamlit run streamlit_app.py` | full web dashboard (3 tabs: Analysis / Scanner / Optimizer) |
 | `walkforward.py` | `walkforward_backtest(...)` | honest out-of-sample results |
 | `backtest.py` | `backtest_strategy(..., profile=...)` | trades + returns, conservative/aggressive |
+| `levels.py` | `compute_levels(df)`, `position_size(...)` | ATR entry/stop/target + risk-based sizing |
+| `scanner.py` | `scan(...)` | rank all instruments by current signal (LONG first) |
+| `optimizer.py` | `optimize(df, feats, ppy, ...)` | grid-search params, scored by walk-forward |
+
+### Dashboard tabs (new)
+- **ANALYSIS** — single instrument: live signal, confirmation checklist, ATR
+  levels + position sizing, in-sample backtest, and an optional *walk-forward*
+  (honest out-of-sample) run via a checkbox.
+- **SCANNER** — one click scans every instrument and ranks them LONG-first, so
+  you instantly see which markets are flashing a signal.
+- **OPTIMIZER** — grid-searches RSI/ADX/leverage/confirmation settings and ranks
+  them by walk-forward Sharpe/Calmar/return (not in-sample), so you tune
+  honestly instead of curve-fitting.
 | `indicators.py` | `confirmation_matrix(df)` | the 8 entry confirmations |
 | `metrics.py` | `summary(returns, ppy)` | Sharpe, Sortino, Max DD, Calmar, win rate, alpha |
 
