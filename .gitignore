@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+
+# Notes:
+# model_params.json / btc_regime_model.json are committed intentionally as
+# example serialized models. Regenerate large/private models out-of-tree.
