@@ -230,19 +230,46 @@ html, body, [class*="css"], .stApp {
 """
 st.markdown(THEME_CSS, unsafe_allow_html=True)
 
-LOGO_SVG = (
-    "<svg viewBox='0 0 32 32' fill='none' xmlns='http://www.w3.org/2000/svg'>"
-    "<defs><linearGradient id='lg' x1='0' y1='0' x2='32' y2='32'>"
-    "<stop offset='0' stop-color='#9b7bff'/><stop offset='1' stop-color='#6e8bff'/>"
-    "</linearGradient></defs>"
-    "<path d='M16 1 L31 16 L16 31 L1 16 Z' fill='url(#lg)'/>"
-    "<path d='M16 1 L31 16 L16 16 Z' fill='#ffffff' fill-opacity='0.30'/>"
-    "<path d='M1 16 L16 16 L16 31 Z' fill='#000000' fill-opacity='0.22'/>"
-    "<path d='M16 1 L16 16 L1 16 Z' fill='#ffffff' fill-opacity='0.14'/>"
-    "<path d='M16 7 L25 16 L16 25 L7 16 Z' fill='#0a0b12' fill-opacity='0.45'/>"
-    "<path d='M16 7 L25 16 L16 16 Z' fill='#cfd6ff' fill-opacity='0.55'/>"
-    "</svg>"
-)
+def _make_particle_sphere_svg(size: int = 64, n_dots: int = 320,
+                              seed: int = 7) -> str:
+    """
+    Build a 'stippled globe' logo: white particles scattered inside a circle,
+    denser near the rim and along the equator/poles so it reads as a sphere,
+    matching the reference image. Pure SVG (no JS), deterministic via seed.
+    """
+    import math
+    import random as _r
+    rng = _r.Random(seed)
+    c = size / 2.0
+    R = c * 0.92
+    dots = []
+    for _ in range(n_dots):
+        # bias radius toward the rim (sqrt pushes points outward)
+        rad = R * (rng.random() ** 0.62)
+        ang = rng.random() * 2 * math.pi
+        x = c + rad * math.cos(ang)
+        y = c + rad * math.sin(ang)
+        # latitude shading: thin out the mid-band a touch for a 3D feel
+        lat = abs(y - c) / R
+        if rng.random() > 0.35 + 0.65 * lat and rad < R * 0.55:
+            continue
+        rr = rng.choice([0.5, 0.6, 0.7, 0.9])
+        op = rng.choice([0.55, 0.7, 0.85, 1.0])
+        dots.append(
+            f"<circle cx='{x:.1f}' cy='{y:.1f}' r='{rr}' "
+            f"fill='#ffffff' fill-opacity='{op}'/>")
+    return (
+        f"<svg viewBox='0 0 {size} {size}' xmlns='http://www.w3.org/2000/svg'>"
+        f"<defs><radialGradient id='glow' cx='50%' cy='42%' r='60%'>"
+        f"<stop offset='0' stop-color='#6e8bff' stop-opacity='0.18'/>"
+        f"<stop offset='1' stop-color='#6e8bff' stop-opacity='0'/>"
+        f"</radialGradient></defs>"
+        f"<circle cx='{c}' cy='{c}' r='{R}' fill='url(#glow)'/>"
+        + "".join(dots) + "</svg>"
+    )
+
+
+LOGO_SVG = _make_particle_sphere_svg()
 
 st.markdown(
     f"""
