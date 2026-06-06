@@ -57,12 +57,14 @@ st.set_page_config(page_title="REGIME TERMINAL", layout="wide",
 # ----------------------------------------------------------------------
 THEME_CSS = """
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Playfair+Display:ital,wght@1,700;1,800;1,900&display=swap');
 :root {
   --bg:#050507; --panel:rgba(20,21,26,0.55); --panel-solid:#101116;
   --border:rgba(255,255,255,0.08); --border-strong:rgba(255,255,255,0.14);
   --text:#e7e9ee; --muted:#8a8f9a; --accent:#6e8bff; --accent2:#9b7bff;
   --green:#3ddc97; --red:#ff5c72; --amber:#ffc24b;
+  --mono:'JetBrains Mono','SF Mono','Menlo','Consolas',monospace;
+  --display:'Playfair Display','Times New Roman',serif;
 }
 html, body, [class*="css"], .stApp {
   background:
@@ -70,7 +72,7 @@ html, body, [class*="css"], .stApp {
     radial-gradient(900px 520px at 12% 8%, rgba(155,123,255,0.10), transparent 55%),
     var(--bg) !important;
   color:var(--text)!important;
-  font-family:'Inter','Segoe UI',system-ui,sans-serif!important;
+  font-family:var(--mono)!important;
 }
 .block-container { padding-top:1.2rem; max-width:1620px; }
 #MainMenu, footer, header { visibility:hidden; }
@@ -96,13 +98,13 @@ html, body, [class*="css"], .stApp {
 
 /* Giant silver-gradient hero heading */
 .hero { text-align:center; padding:2.2rem 0 .6rem; position:relative; }
-.hero h1 { font-size:6.5rem; line-height:.95; font-weight:800; letter-spacing:-3px; margin:0;
-  background:linear-gradient(180deg,#ffffff 0%,#b9bec9 38%,#42454e 100%);
+.hero h1 { font-family:var(--display); font-style:italic; font-size:8rem; line-height:.92;
+  font-weight:900; letter-spacing:-3px; margin:0;
+  background:linear-gradient(180deg,#ffffff 0%,#dfe2eb 50%,#9aa0ad 100%);
   -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent;
   filter:drop-shadow(0 10px 40px rgba(110,139,255,0.18)); }
-.hero .tagline { font-size:1.6rem; font-weight:700; margin-top:-.4rem;
-  background:linear-gradient(180deg,#fff,#aab1c4); -webkit-background-clip:text;
-  background-clip:text; -webkit-text-fill-color:transparent; }
+.hero .tagline { font-size:1rem; font-weight:500; margin-top:.4rem; color:var(--muted);
+  letter-spacing:1px; text-transform:uppercase; }
 .hero .lead { color:var(--muted); font-size:.9rem; max-width:560px; margin:.8rem auto 0; line-height:1.5; }
 .term-sub { font-size:.68rem; color:var(--muted); letter-spacing:1.5px;
   text-transform:uppercase; font-weight:500; }
@@ -198,7 +200,7 @@ html, body, [class*="css"], .stApp {
 .stNumberInput input {
   background:var(--panel-solid)!important; color:var(--text)!important;
   border:1px solid var(--border)!important; border-radius:12px!important;
-  font-family:'Inter',sans-serif!important;
+  font-family:var(--mono)!important;
 }
 .stSlider label, .stTextInput label, .stSelectbox label, .stNumberInput label {
   color:var(--muted)!important; font-size:.64rem!important; letter-spacing:1px;
@@ -206,7 +208,7 @@ html, body, [class*="css"], .stApp {
 }
 .stButton button { background:linear-gradient(135deg,var(--accent),var(--accent2))!important;
   color:#fff!important; border:none!important; border-radius:999px!important;
-  font-family:'Inter',sans-serif!important; font-weight:700!important; letter-spacing:.5px;
+  font-family:var(--mono)!important; font-weight:700!important; letter-spacing:.5px;
   box-shadow:0 6px 20px rgba(110,139,255,0.35); }
 .stButton button:hover { filter:brightness(1.1); box-shadow:0 8px 26px rgba(110,139,255,0.5); }
 .stDataFrame { border:1px solid var(--border); border-radius:14px; overflow:hidden; }
@@ -214,7 +216,7 @@ html, body, [class*="css"], .stApp {
 /* Tabs */
 .stTabs [data-baseweb="tab-list"] { gap:.4rem; border-bottom:none; }
 .stTabs [data-baseweb="tab"] { background:var(--panel); border:1px solid var(--border);
-  border-radius:12px; color:var(--muted); font-family:'Inter',sans-serif; font-weight:600;
+  border-radius:12px; color:var(--muted); font-family:var(--mono); font-weight:600;
   letter-spacing:1px; font-size:.7rem; padding:.2rem 1rem; }
 .stTabs [aria-selected="true"] { background:linear-gradient(135deg,var(--accent),var(--accent2));
   color:#fff; border-color:transparent; }
@@ -288,8 +290,8 @@ st.markdown(
       </div>
     </div>
     <div class="hero">
-      <h1>REGIME</h1>
-      <div class="tagline">Detect the market's hidden state, today.</div>
+      <h1>regime</h1>
+      <div class="tagline">// detect the market's hidden state, today.</div>
       <div class="lead">A Hidden Markov Model engine that classifies market regimes
       across 43 instruments &mdash; crypto, metals, forex, indices, commodities and
       stocks. Research build &mdash; not financial advice.</div>
