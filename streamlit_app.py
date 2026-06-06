@@ -57,87 +57,134 @@ st.set_page_config(page_title="REGIME TERMINAL", layout="wide",
 # ----------------------------------------------------------------------
 THEME_CSS = """
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=JetBrains+Mono:wght@400;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
 :root {
-  --bg:#0a0b0d; --panel:#0e0f12; --border:#23262b; --text:#c9ccd1;
-  --muted:#6b7078; --accent:#c0392b; --accent-dim:#7e2b22; --green:#4f9d69;
-  --amber:#c9962b;
+  --bg:#050507; --panel:rgba(20,21,26,0.55); --panel-solid:#101116;
+  --border:rgba(255,255,255,0.08); --border-strong:rgba(255,255,255,0.14);
+  --text:#e7e9ee; --muted:#8a8f9a; --accent:#6e8bff; --accent2:#9b7bff;
+  --green:#3ddc97; --red:#ff5c72; --amber:#ffc24b;
 }
 html, body, [class*="css"], .stApp {
-  background-color:var(--bg)!important; color:var(--text)!important;
-  font-family:'JetBrains Mono','Share Tech Mono','Courier New',monospace!important;
+  background:
+    radial-gradient(1100px 520px at 78% -8%, rgba(110,139,255,0.12), transparent 60%),
+    radial-gradient(900px 520px at 12% 8%, rgba(155,123,255,0.10), transparent 55%),
+    var(--bg) !important;
+  color:var(--text)!important;
+  font-family:'Inter','Segoe UI',system-ui,sans-serif!important;
 }
-.block-container { padding-top:1rem; max-width:1600px; }
+.block-container { padding-top:1.2rem; max-width:1620px; }
 #MainMenu, footer, header { visibility:hidden; }
 
+/* Header */
 .term-header { display:flex; justify-content:space-between; align-items:center;
-  border-bottom:1px solid var(--border); padding-bottom:.5rem; margin-bottom:.9rem; }
-.term-title { font-size:1.2rem; letter-spacing:3px; }
-.term-title b { color:var(--accent); }
-.term-sub { font-size:.7rem; color:var(--muted); letter-spacing:1px; }
+  padding:.1rem .2rem 1rem; margin-bottom:1.1rem;
+  border-bottom:1px solid var(--border); }
+.term-title { font-size:1.5rem; letter-spacing:-.5px; font-weight:800;
+  display:flex; align-items:center; gap:.6rem; }
+.term-title .dot { width:14px; height:14px; border-radius:50%;
+  background:linear-gradient(135deg,var(--accent),var(--accent2));
+  box-shadow:0 0 18px rgba(110,139,255,0.7); }
+.term-title b { background:linear-gradient(135deg,#fff,#9fb0ff);
+  -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; }
+.term-sub { font-size:.68rem; color:var(--muted); letter-spacing:1.5px;
+  text-transform:uppercase; font-weight:500; }
+.term-badge { font-size:.6rem; color:var(--amber); letter-spacing:1.5px;
+  border:1px solid rgba(255,194,75,0.35); border-radius:999px; padding:.3rem .7rem;
+  background:rgba(255,194,75,0.06); }
 
-.panel { border:1px solid var(--border); background:var(--panel); padding:.8rem .9rem; margin-bottom:.9rem; }
-.panel-h { font-size:.72rem; letter-spacing:2px; text-transform:uppercase;
-  border-bottom:1px solid var(--border); padding-bottom:.35rem; margin-bottom:.6rem; }
-.panel-h span { color:var(--accent); }
-.kv { display:flex; justify-content:space-between; font-size:.72rem; padding:.12rem 0; }
-.kv .k { color:var(--muted); } .kv .v { color:var(--text); }
+/* Glass panels */
+.panel { border:1px solid var(--border); background:var(--panel);
+  border-radius:18px; padding:1rem 1.1rem; margin-bottom:1rem;
+  backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
+  box-shadow:0 8px 30px rgba(0,0,0,0.35); }
+.panel-h { font-size:.66rem; letter-spacing:1.6px; text-transform:uppercase;
+  color:var(--muted); font-weight:600; padding-bottom:.55rem; margin-bottom:.7rem;
+  border-bottom:1px solid var(--border); }
+.panel-h span { background:linear-gradient(135deg,var(--accent),var(--accent2));
+  -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; }
+.kv { display:flex; justify-content:space-between; font-size:.76rem; padding:.2rem 0; }
+.kv .k { color:var(--muted); } .kv .v { color:var(--text); font-weight:500; font-variant-numeric:tabular-nums; }
 
-.signal { border:1px solid var(--border); background:var(--panel); padding:1rem 1.2rem;
-  margin-bottom:.9rem; display:flex; justify-content:space-between; align-items:center; }
-.signal .verdict { font-size:2rem; letter-spacing:3px; font-weight:600; }
-.signal.long { border-left:5px solid var(--green); } .signal.long .verdict { color:var(--green); }
-.signal.wait { border-left:5px solid var(--amber); } .signal.wait .verdict { color:var(--amber); }
-.signal.stand { border-left:5px solid var(--accent); } .signal.stand .verdict { color:var(--accent); }
-.signal .sub { font-size:.7rem; color:var(--muted); letter-spacing:1px; margin-top:.2rem; }
-.signal .right { text-align:right; } .signal .big { font-size:1.6rem; color:var(--text); }
+/* Live signal banner */
+.signal { border:1px solid var(--border); border-radius:20px; padding:1.3rem 1.5rem;
+  margin-bottom:1.1rem; display:flex; justify-content:space-between; align-items:center;
+  background:var(--panel); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
+  box-shadow:0 10px 40px rgba(0,0,0,0.4); position:relative; overflow:hidden; }
+.signal:before { content:''; position:absolute; inset:0; opacity:.16; pointer-events:none; }
+.signal .verdict { font-size:2.3rem; letter-spacing:-.5px; font-weight:800; }
+.signal.long:before { background:radial-gradient(600px 200px at 0% 50%, var(--green), transparent 70%); }
+.signal.long { border-color:rgba(61,220,151,0.4); } .signal.long .verdict { color:var(--green); }
+.signal.wait:before { background:radial-gradient(600px 200px at 0% 50%, var(--amber), transparent 70%); }
+.signal.wait { border-color:rgba(255,194,75,0.4); } .signal.wait .verdict { color:var(--amber); }
+.signal.stand:before { background:radial-gradient(600px 200px at 0% 50%, var(--red), transparent 70%); }
+.signal.stand { border-color:rgba(255,92,114,0.4); } .signal.stand .verdict { color:var(--red); }
+.signal .sub { font-size:.72rem; color:var(--muted); letter-spacing:.5px; margin-top:.25rem; }
+.signal .right { text-align:right; } .signal .big { font-size:1.5rem; color:var(--text); font-weight:700; }
 
-.statgrid { display:flex; gap:.5rem; }
-.stat { flex:1; border:1px solid var(--border); padding:.4rem; text-align:center; }
-.stat .n { font-size:1.4rem; } .stat .l { font-size:.6rem; color:var(--muted); letter-spacing:1px; }
-.stat.bull .n { color:var(--green); } .stat.bear .n { color:var(--accent); }
+/* Stat boxes */
+.statgrid { display:flex; gap:.6rem; }
+.stat { flex:1; border:1px solid var(--border); border-radius:14px; padding:.6rem .4rem;
+  text-align:center; background:rgba(255,255,255,0.02); }
+.stat .n { font-size:1.5rem; font-weight:700; font-variant-numeric:tabular-nums; }
+.stat .l { font-size:.58rem; color:var(--muted); letter-spacing:1px; text-transform:uppercase; margin-top:.15rem; }
+.stat.bull .n { color:var(--green); } .stat.bear .n { color:var(--red); }
 
-.op { border:1px solid var(--border); padding:.5rem .6rem; margin-bottom:.5rem; }
-.op .code { font-size:.6rem; color:var(--accent); letter-spacing:1px; }
-.op .ttl { font-size:.8rem; margin:.15rem 0; }
-.op .meta { font-size:.65rem; color:var(--muted); }
+/* Regime list cards */
+.op { border:1px solid var(--border); border-radius:14px; padding:.6rem .75rem;
+  margin-bottom:.55rem; background:rgba(255,255,255,0.02); transition:.15s; }
+.op:hover { border-color:var(--border-strong); background:rgba(255,255,255,0.04); }
+.op .code { font-size:.58rem; color:var(--accent); letter-spacing:1px; font-weight:600; }
+.op .ttl { font-size:.82rem; margin:.18rem 0; font-weight:600; }
+.op .meta { font-size:.66rem; color:var(--muted); font-variant-numeric:tabular-nums; }
 
+/* Confirmation checklist */
 .chk { display:flex; justify-content:space-between; align-items:center;
-  font-size:.72rem; padding:.28rem .1rem; border-bottom:1px solid #15171a; }
-.chk .name { color:var(--text); } .chk .val { color:var(--muted); font-size:.66rem; margin-left:.5rem; }
-.chk .mark { font-weight:600; } .chk.pass .mark { color:var(--green); } .chk.fail .mark { color:var(--accent); }
+  font-size:.74rem; padding:.36rem .1rem; border-bottom:1px solid var(--border); }
+.chk .name { color:var(--text); } .chk .val { color:var(--muted); font-size:.66rem; margin-left:.5rem; font-variant-numeric:tabular-nums; }
+.chk .mark { font-weight:700; font-size:.64rem; padding:.16rem .5rem; border-radius:999px; }
+.chk.pass .mark { color:var(--green); background:rgba(61,220,151,0.12); }
+.chk.fail .mark { color:var(--red); background:rgba(255,92,114,0.12); }
 
 /* Levels ladder */
-.lvl { display:flex; justify-content:space-between; font-size:.74rem; padding:.3rem .1rem;
-  border-bottom:1px solid #15171a; }
-.lvl .tag { color:var(--muted); letter-spacing:1px; }
-.lvl.tgt .px { color:var(--green); } .lvl.entry .px { color:var(--text); }
-.lvl.stop .px { color:var(--accent); }
+.lvl { display:flex; justify-content:space-between; font-size:.78rem; padding:.36rem .1rem;
+  border-bottom:1px solid var(--border); font-variant-numeric:tabular-nums; }
+.lvl .tag { color:var(--muted); letter-spacing:.5px; }
+.lvl.tgt .px { color:var(--green); font-weight:600; } .lvl.entry .px { color:var(--text); font-weight:700; }
+.lvl.stop .px { color:var(--red); font-weight:600; }
 
+/* Inputs */
 .stTextInput input, .stSelectbox div[data-baseweb="select"] > div,
 .stNumberInput input {
-  background:var(--panel)!important; color:var(--text)!important;
-  border:1px solid var(--border)!important; border-radius:0!important;
-  font-family:'JetBrains Mono',monospace!important;
+  background:var(--panel-solid)!important; color:var(--text)!important;
+  border:1px solid var(--border)!important; border-radius:12px!important;
+  font-family:'Inter',sans-serif!important;
 }
 .stSlider label, .stTextInput label, .stSelectbox label, .stNumberInput label {
-  color:var(--muted)!important; font-size:.65rem!important; letter-spacing:1px;
+  color:var(--muted)!important; font-size:.64rem!important; letter-spacing:1px;
+  text-transform:uppercase; font-weight:600;
 }
-.stButton button { background:var(--accent-dim)!important; color:#fff!important;
-  border:1px solid var(--accent)!important; border-radius:0!important;
-  font-family:'JetBrains Mono',monospace!important; letter-spacing:2px; }
-.stButton button:hover { background:var(--accent)!important; }
-.stDataFrame { border:1px solid var(--border); }
-.stTabs [data-baseweb="tab-list"] { gap:2px; }
-.stTabs [data-baseweb="tab"] { background:var(--panel); border:1px solid var(--border);
-  color:var(--muted); font-family:'JetBrains Mono',monospace; letter-spacing:2px; font-size:.7rem; }
-.stTabs [aria-selected="true"] { background:var(--accent-dim); color:#fff; }
+.stButton button { background:linear-gradient(135deg,var(--accent),var(--accent2))!important;
+  color:#fff!important; border:none!important; border-radius:12px!important;
+  font-family:'Inter',sans-serif!important; font-weight:700!important; letter-spacing:.5px;
+  box-shadow:0 6px 20px rgba(110,139,255,0.35); }
+.stButton button:hover { filter:brightness(1.1); box-shadow:0 8px 26px rgba(110,139,255,0.5); }
+.stDataFrame { border:1px solid var(--border); border-radius:14px; overflow:hidden; }
 
-.metricgrid { display:flex; flex-wrap:wrap; gap:.5rem; }
-.metric { flex:1; min-width:115px; border:1px solid var(--border); background:var(--panel); padding:.5rem .6rem; }
-.metric .l { font-size:.56rem; color:var(--muted); letter-spacing:1px; text-transform:uppercase; }
-.metric .n { font-size:1.2rem; margin-top:.2rem; }
-.metric.good .n { color:var(--green); } .metric.bad .n { color:var(--accent); }
+/* Tabs */
+.stTabs [data-baseweb="tab-list"] { gap:.4rem; border-bottom:none; }
+.stTabs [data-baseweb="tab"] { background:var(--panel); border:1px solid var(--border);
+  border-radius:12px; color:var(--muted); font-family:'Inter',sans-serif; font-weight:600;
+  letter-spacing:1px; font-size:.7rem; padding:.2rem 1rem; }
+.stTabs [aria-selected="true"] { background:linear-gradient(135deg,var(--accent),var(--accent2));
+  color:#fff; border-color:transparent; }
+
+/* Metric cards */
+.metricgrid { display:flex; flex-wrap:wrap; gap:.6rem; }
+.metric { flex:1; min-width:120px; border:1px solid var(--border); border-radius:14px;
+  background:rgba(255,255,255,0.02); padding:.65rem .8rem; }
+.metric .l { font-size:.56rem; color:var(--muted); letter-spacing:1px; text-transform:uppercase; font-weight:600; }
+.metric .n { font-size:1.35rem; margin-top:.25rem; font-weight:700; font-variant-numeric:tabular-nums; }
+.metric.good .n { color:var(--green); } .metric.bad .n { color:var(--red); }
 </style>
 """
 st.markdown(THEME_CSS, unsafe_allow_html=True)
@@ -146,10 +193,10 @@ st.markdown(
     """
     <div class="term-header">
       <div>
-        <div class="term-title">REGIME <b>TERMINAL</b></div>
-        <div class="term-sub">HIDDEN MARKOV MODEL // MULTI-ASSET REGIME DETECTION</div>
+        <div class="term-title"><span class="dot"></span>Regime <b>Terminal</b></div>
+        <div class="term-sub">Hidden Markov Model &middot; Multi-Asset Regime Detection</div>
       </div>
-      <div class="term-sub">RESEARCH BUILD &mdash; NOT FINANCIAL ADVICE</div>
+      <div class="term-badge">RESEARCH BUILD &mdash; NOT FINANCIAL ADVICE</div>
     </div>
     """,
     unsafe_allow_html=True,
@@ -187,18 +234,18 @@ def regime_chart(df, features, states, label, n_states):
     import matplotlib.pyplot as plt
     close = df["Close"].reindex(features.index)
     fig, ax = plt.subplots(figsize=(11, 5.0))
-    fig.patch.set_facecolor("#0a0b0d"); ax.set_facecolor("#0a0b0d")
-    ax.plot(features.index, close.values, color="#3a3e45", linewidth=0.8, zorder=1)
-    sc = ax.scatter(features.index, close.values, c=states, cmap="Spectral",
+    fig.patch.set_facecolor("#050507"); ax.set_facecolor("#050507")
+    ax.plot(features.index, close.values, color="#3a3e4a", linewidth=0.8, zorder=1)
+    sc = ax.scatter(features.index, close.values, c=states, cmap="turbo",
                     s=7, zorder=2, vmin=0, vmax=max(n_states - 1, 1))
-    ax.set_title(f"{label}  //  CLOSE PRICE BY DETECTED REGIME",
-                 color="#c9ccd1", fontsize=10, loc="left", family="monospace")
+    ax.set_title(f"{label}  ·  CLOSE PRICE BY DETECTED REGIME",
+                 color="#e7e9ee", fontsize=10, loc="left", family="sans-serif")
     for s in ax.spines.values(): s.set_color("#23262b")
-    ax.tick_params(colors="#6b7078", labelsize=7); ax.grid(color="#15171a", linewidth=0.5)
+    ax.tick_params(colors="#8a8f9a", labelsize=7); ax.grid(color="#15171a", linewidth=0.5)
     cbar = fig.colorbar(sc, ax=ax, fraction=0.025, pad=0.01)
-    cbar.set_label("REGIME", color="#6b7078", fontsize=7)
-    cbar.ax.yaxis.set_tick_params(color="#6b7078", labelsize=6)
-    plt.setp(plt.getp(cbar.ax.axes, "yticklabels"), color="#6b7078")
+    cbar.set_label("REGIME", color="#8a8f9a", fontsize=7)
+    cbar.ax.yaxis.set_tick_params(color="#8a8f9a", labelsize=6)
+    plt.setp(plt.getp(cbar.ax.axes, "yticklabels"), color="#8a8f9a")
     fig.tight_layout(); return fig
 
 
@@ -210,16 +257,16 @@ def equity_drawdown_chart(strat_ret, bench_ret, title="EQUITY CURVE (GROWTH OF 1
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(11, 4.6), sharex=True,
                                    gridspec_kw={"height_ratios": [2.2, 1]})
     for ax in (ax1, ax2):
-        fig.patch.set_facecolor("#0a0b0d"); ax.set_facecolor("#0a0b0d")
+        fig.patch.set_facecolor("#050507"); ax.set_facecolor("#050507")
         for s in ax.spines.values(): s.set_color("#23262b")
-        ax.tick_params(colors="#6b7078", labelsize=7); ax.grid(color="#15171a", linewidth=0.5)
-    ax1.plot(eq_s.index, eq_s.values, color="#4f9d69", linewidth=1.1, label="STRATEGY")
-    ax1.plot(eq_b.index, eq_b.values, color="#6b7078", linewidth=0.9, label="BUY & HOLD")
-    ax1.set_title(title, color="#c9ccd1", fontsize=9, loc="left", family="monospace")
-    leg = ax1.legend(loc="upper left", fontsize=7, facecolor="#0e0f12", edgecolor="#23262b")
-    for t in leg.get_texts(): t.set_color("#c9ccd1")
-    ax2.fill_between(dd.index, dd.values, 0.0, color="#7e2b22", alpha=0.8)
-    ax2.set_title("DRAWDOWN (UNDERWATER)", color="#6b7078", fontsize=8, loc="left", family="monospace")
+        ax.tick_params(colors="#8a8f9a", labelsize=7); ax.grid(color="#15171a", linewidth=0.5)
+    ax1.plot(eq_s.index, eq_s.values, color="#3ddc97", linewidth=1.3, label="STRATEGY")
+    ax1.plot(eq_b.index, eq_b.values, color="#8a8f9a", linewidth=0.9, label="BUY & HOLD")
+    ax1.set_title(title, color="#e7e9ee", fontsize=9, loc="left", family="sans-serif")
+    leg = ax1.legend(loc="upper left", fontsize=7, facecolor="#101116", edgecolor="#23262b")
+    for t in leg.get_texts(): t.set_color("#e7e9ee")
+    ax2.fill_between(dd.index, dd.values, 0.0, color="#ff5c72", alpha=0.65)
+    ax2.set_title("DRAWDOWN (UNDERWATER)", color="#8a8f9a", fontsize=8, loc="left", family="sans-serif")
     fig.tight_layout(); return fig
 
 

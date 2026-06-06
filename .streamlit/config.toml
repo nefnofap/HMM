@@ -3,11 +3,11 @@
 
 [theme]
 base = "dark"
-primaryColor = "#c0392b"
-backgroundColor = "#0a0b0d"
-secondaryBackgroundColor = "#0e0f12"
-textColor = "#c9ccd1"
-font = "monospace"
+primaryColor = "#6e8bff"
+backgroundColor = "#050507"
+secondaryBackgroundColor = "#101116"
+textColor = "#e7e9ee"
+font = "sans serif"
 
 [server]
 headless = true
