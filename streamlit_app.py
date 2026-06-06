@@ -25,7 +25,10 @@ import pandas as pd
 import streamlit as st
 
 from hmm_predictor import ConvergenceError, HMMPredictor, SingularCovarianceError
-from regime_detection import build_features, load_prices, summarise_states
+from regime_detection import (build_features, load_prices, periods_per_year_for,
+                              summarise_states)
+from backtest import StrategyProfile, backtest_strategy, trades_to_frame
+from metrics import drawdown_series, equity_curve, summary as metric_summary
 
 # ----------------------------------------------------------------------
 # Page setup + command-center theme (injected CSS)
@@ -118,6 +121,17 @@ html, body, [class*="css"], .stApp {
 }
 .stButton button:hover { background: var(--accent) !important; }
 .stDataFrame { border:1px solid var(--border); }
+
+/* Metric cards (Sharpe / MaxDD / etc.) */
+.metricgrid { display:flex; flex-wrap:wrap; gap:.5rem; }
+.metric {
+  flex:1; min-width:115px; border:1px solid var(--border);
+  background:var(--panel); padding:.5rem .6rem;
+}
+.metric .l { font-size:.56rem; color:var(--muted); letter-spacing:1px; text-transform:uppercase; }
+.metric .n { font-size:1.2rem; color:var(--text); margin-top:.2rem; }
+.metric.good .n { color: var(--green); }
+.metric.bad .n { color: var(--accent); }
 </style>
 """
 st.markdown(THEME_CSS, unsafe_allow_html=True)
@@ -138,7 +152,7 @@ st.markdown(
 # ----------------------------------------------------------------------
 # Control bar (top row instead of a sidebar, to match the terminal look)
 # ----------------------------------------------------------------------
-c1, c2, c3, c4, c5 = st.columns([2, 1.4, 1, 1, 1.2])
+c1, c2, c3, c4, c5, c6 = st.columns([1.7, 1.2, 0.9, 0.9, 1.3, 1.2])
 with c1:
     ticker = st.text_input("TICKER", value="BTC-USD")
 with c2:
@@ -148,6 +162,9 @@ with c3:
 with c4:
     period = st.selectbox("HISTORY", ["730d", "365d", "180d"], index=0)
 with c5:
+    profile_name = st.selectbox("PROFILE", ["CONSERVATIVE (7/8, 2.5x)",
+                                            "AGGRESSIVE (5/8, 4x)"], index=0)
+with c6:
     st.markdown("<div style='height:1.55rem'></div>", unsafe_allow_html=True)
     run_button = st.button("RUN DETECTION", type="primary", use_container_width=True)
 
@@ -216,9 +233,53 @@ def dist_chart(states, n_states):
     return fig
 
 
-# ----------------------------------------------------------------------
-# HTML builders for the panels
-# ----------------------------------------------------------------------
+def equity_drawdown_chart(strat_ret, bench_ret):
+    """Equity curve (strategy vs buy-and-hold) + underwater drawdown, dark."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    eq_s = equity_curve(strat_ret)
+    eq_b = equity_curve(bench_ret)
+    dd = drawdown_series(strat_ret)
+
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(11, 4.6), sharex=True,
+                                   gridspec_kw={"height_ratios": [2.2, 1]})
+    for ax in (ax1, ax2):
+        fig.patch.set_facecolor("#0a0b0d")
+        ax.set_facecolor("#0a0b0d")
+        for spine in ax.spines.values():
+            spine.set_color("#23262b")
+        ax.tick_params(colors="#6b7078", labelsize=7)
+        ax.grid(color="#15171a", linewidth=0.5)
+
+    ax1.plot(eq_s.index, eq_s.values, color="#4f9d69", linewidth=1.1,
+             label="STRATEGY")
+    ax1.plot(eq_b.index, eq_b.values, color="#6b7078", linewidth=0.9,
+             label="BUY & HOLD")
+    ax1.set_title("EQUITY CURVE (GROWTH OF 1.0)", color="#c9ccd1",
+                  fontsize=9, loc="left", family="monospace")
+    leg = ax1.legend(loc="upper left", fontsize=7, facecolor="#0e0f12",
+                     edgecolor="#23262b")
+    for t in leg.get_texts():
+        t.set_color("#c9ccd1")
+
+    ax2.fill_between(dd.index, dd.values, 0.0, color="#7e2b22", alpha=0.8)
+    ax2.set_title("DRAWDOWN (UNDERWATER)", color="#6b7078", fontsize=8,
+                  loc="left", family="monospace")
+    fig.tight_layout()
+    return fig
+
+
+def metric_card(label, value, fmt="{:.2f}", good=None):
+    """Build one metric card. `good` True->green, False->red, None->neutral."""
+    cls = "metric"
+    if good is True:
+        cls += " good"
+    elif good is False:
+        cls += " bad"
+    val = fmt.format(value) if isinstance(value, (int, float)) else str(value)
+    return f"<div class='{cls}'><div class='l'>{label}</div><div class='n'>{val}</div></div>"
 def panel(title_html: str, body_html: str) -> str:
     return (f"<div class='panel'><div class='panel-h'>{title_html}</div>"
             f"{body_html}</div>")
@@ -325,6 +386,70 @@ if run_button:
             fc += kv(f"t+{f['step']}",
                      f"E[ret] {f['expected_observation'][0]:+.5f} | state {ml}")
         st.markdown(panel("FORECAST <span>(NEXT 3)</span>", fc), unsafe_allow_html=True)
+
+    # ---------------- BACKTEST (full width, below the 3 columns) -------
+    st.markdown("<div style='height:.5rem'></div>", unsafe_allow_html=True)
+    profile = (StrategyProfile.aggressive() if profile_name.startswith("AGGRESSIVE")
+               else StrategyProfile.conservative())
+    try:
+        bt = backtest_strategy(df, features, states, profile=profile)
+        ppy = periods_per_year_for(interval, ticker)
+        m = metric_summary(bt["strategy_returns"], ppy,
+                           benchmark_returns=bt["benchmark_returns"])
+
+        # Metric cards row
+        cards = (
+            metric_card("TOTAL RETURN", m["total_return"] * 100, "{:+.1f}%",
+                        good=m["total_return"] > 0)
+            + metric_card("ALPHA vs HODL", m.get("alpha_vs_buy_hold", 0) * 100,
+                          "{:+.1f}%", good=m.get("alpha_vs_buy_hold", 0) > 0)
+            + metric_card("SHARPE", m["sharpe"], "{:.2f}", good=m["sharpe"] > 1)
+            + metric_card("SORTINO", m["sortino"], "{:.2f}", good=m["sortino"] > 1)
+            + metric_card("MAX DRAWDOWN", m["max_drawdown"] * 100, "{:.1f}%",
+                          good=m["max_drawdown"] > -0.25)
+            + metric_card("CALMAR", m["calmar"], "{:.2f}", good=m["calmar"] > 0.5)
+            + metric_card("WIN RATE", m["win_rate"] * 100, "{:.0f}%",
+                          good=m["win_rate"] > 0.5)
+            + metric_card("TRADES", len(bt["trades"]), "{:d}")
+        )
+        st.markdown(
+            panel(f"BACKTEST <span>// {profile_name}</span>",
+                  f"<div class='metricgrid'>{cards}</div>"),
+            unsafe_allow_html=True,
+        )
+
+        ec, tc = st.columns([2, 1.2])
+        with ec:
+            st.pyplot(equity_drawdown_chart(bt["strategy_returns"],
+                                            bt["benchmark_returns"]),
+                      use_container_width=True)
+        with tc:
+            trades_df = trades_to_frame(bt["trades"])
+            if not trades_df.empty:
+                show = trades_df[["entry_time", "exit_time", "bars_held",
+                                  "leveraged_return_pct", "exit_reason"]].copy()
+                show["leveraged_return_pct"] = (show["leveraged_return_pct"]
+                                                * 100).round(2)
+                show = show.rename(columns={"leveraged_return_pct": "ret_%"})
+                st.markdown("<div class='panel-h'>TRADE LOG</div>",
+                            unsafe_allow_html=True)
+                st.dataframe(show.tail(15), use_container_width=True,
+                             height=320, hide_index=True)
+            else:
+                st.markdown(
+                    panel("TRADE LOG",
+                          "<div class='kv'><span class='k'>No trades triggered. "
+                          "Loosen the profile or widen history.</span></div>"),
+                    unsafe_allow_html=True)
+
+        st.caption(
+            "In-sample backtest (model fit on full window). For honest "
+            "out-of-sample results use walkforward.walkforward_backtest in code. "
+            "Research only - not financial advice."
+        )
+    except Exception as exc:  # noqa: BLE001
+        st.warning(f"Backtest unavailable: {exc}")
+
 else:
     st.markdown(
         "<div class='panel'><div class='panel-h'>STANDBY</div>"
