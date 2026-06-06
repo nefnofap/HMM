@@ -2,17 +2,20 @@
 streamlit_app.py
 ================
 
-The simplest possible "website" for the HMM regime detector.
+REGIME TERMINAL - a dark "command-center" web dashboard for the HMM market
+regime detector, styled after an intelligence-terminal layout:
 
-Streamlit turns a Python script into a web page automatically - no HTML,
-CSS, or JavaScript required. This is the easiest path for a beginner to see
-the model running in a browser.
+    * dark, near-black background with monospace type and thin panel borders
+    * left column  : model dossier + regime activity stat boxes + volatility tiers
+    * center column: regime-overlay price chart + regime distribution bars
+    * right column : "REGIME LIST" of detected states with labels (like an ops list)
 
-Run it (see WINDOWS_SETUP.md for full beginner steps):
+Streamlit turns this Python file into a web page - no HTML/CSS/JS skills needed
+to run it. The look-and-feel is applied with a small injected CSS block.
+
+Run it (see WINDOWS_SETUP.md for beginner steps):
 
     streamlit run streamlit_app.py
-
-Your browser opens at http://localhost:8501 with an interactive dashboard.
 """
 
 from __future__ import annotations
@@ -25,45 +28,140 @@ from hmm_predictor import ConvergenceError, HMMPredictor, SingularCovarianceErro
 from regime_detection import build_features, load_prices, summarise_states
 
 # ----------------------------------------------------------------------
-# Page setup
+# Page setup + command-center theme (injected CSS)
 # ----------------------------------------------------------------------
-st.set_page_config(page_title="HMM Regime Detector", layout="wide")
-st.title("Market Regime Detector (Hidden Markov Model)")
-st.caption(
-    "Detects hidden market 'regimes' (e.g. bull / bear / sideways) from price "
-    "data. For research and learning only - not financial advice."
+st.set_page_config(page_title="REGIME TERMINAL", layout="wide",
+                   initial_sidebar_state="collapsed")
+
+THEME_CSS = """
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=JetBrains+Mono:wght@400;600&display=swap');
+
+:root {
+  --bg: #0a0b0d;
+  --panel: #0e0f12;
+  --border: #23262b;
+  --text: #c9ccd1;
+  --muted: #6b7078;
+  --accent: #c0392b;
+  --accent-dim: #7e2b22;
+  --green: #4f9d69;
+}
+
+html, body, [class*="css"], .stApp {
+  background-color: var(--bg) !important;
+  color: var(--text) !important;
+  font-family: 'JetBrains Mono', 'Share Tech Mono', 'Courier New', monospace !important;
+}
+.block-container { padding-top: 1.2rem; max-width: 1500px; }
+#MainMenu, footer, header { visibility: hidden; }
+
+/* Top title bar */
+.term-header {
+  display:flex; justify-content:space-between; align-items:center;
+  border-bottom: 1px solid var(--border); padding-bottom: .5rem; margin-bottom: 1rem;
+}
+.term-title { font-size: 1.15rem; letter-spacing: 3px; color: var(--text); }
+.term-title b { color: var(--accent); }
+.term-sub { font-size: .7rem; color: var(--muted); letter-spacing: 1px; }
+
+/* Panels */
+.panel {
+  border: 1px solid var(--border); background: var(--panel);
+  padding: .8rem .9rem; margin-bottom: .9rem;
+}
+.panel-h {
+  font-size: .72rem; letter-spacing: 2px; color: var(--text);
+  text-transform: uppercase; border-bottom: 1px solid var(--border);
+  padding-bottom: .35rem; margin-bottom: .6rem;
+}
+.panel-h span { color: var(--accent); }
+.kv { display:flex; justify-content:space-between; font-size:.72rem; padding:.12rem 0; }
+.kv .k { color: var(--muted); }
+.kv .v { color: var(--text); }
+
+/* Stat boxes (Total / Bullish / Bearish) */
+.statgrid { display:flex; gap:.5rem; }
+.stat { flex:1; border:1px solid var(--border); padding:.4rem; text-align:center; }
+.stat .n { font-size:1.4rem; color: var(--text); }
+.stat .l { font-size:.6rem; color: var(--muted); letter-spacing:1px; }
+.stat.bull .n { color: var(--green); }
+.stat.bear .n { color: var(--accent); }
+
+/* Risk / volatility tier rows */
+.risk { display:flex; align-items:center; margin:.3rem 0; }
+.risk .box {
+  background: var(--accent-dim); color:#fff; font-size:.9rem; width:42px;
+  text-align:center; padding:.25rem 0; margin-right:.6rem; border:1px solid var(--accent);
+}
+.risk .lbl { font-size:.7rem; color: var(--muted); letter-spacing:1px; }
+
+/* Operations / regime list */
+.op { border:1px solid var(--border); padding:.5rem .6rem; margin-bottom:.5rem; }
+.op .code { font-size:.6rem; color: var(--accent); letter-spacing:1px; }
+.op .ttl { font-size:.8rem; color: var(--text); margin:.15rem 0; }
+.op .meta { font-size:.65rem; color: var(--muted); }
+
+/* Inputs */
+.stTextInput input, .stSelectbox div[data-baseweb="select"] > div {
+  background: var(--panel) !important; color: var(--text) !important;
+  border: 1px solid var(--border) !important; border-radius:0 !important;
+  font-family:'JetBrains Mono', monospace !important;
+}
+.stSlider label, .stTextInput label, .stSelectbox label {
+  color: var(--muted) !important; font-size:.65rem !important; letter-spacing:1px;
+}
+.stButton button {
+  background: var(--accent-dim) !important; color:#fff !important;
+  border:1px solid var(--accent) !important; border-radius:0 !important;
+  font-family:'JetBrains Mono', monospace !important; letter-spacing:2px;
+}
+.stButton button:hover { background: var(--accent) !important; }
+.stDataFrame { border:1px solid var(--border); }
+</style>
+"""
+st.markdown(THEME_CSS, unsafe_allow_html=True)
+
+st.markdown(
+    """
+    <div class="term-header">
+      <div>
+        <div class="term-title">REGIME <b>TERMINAL</b></div>
+        <div class="term-sub">HIDDEN MARKOV MODEL // MARKET REGIME DETECTION</div>
+      </div>
+      <div class="term-sub">RESEARCH BUILD &mdash; NOT FINANCIAL ADVICE</div>
+    </div>
+    """,
+    unsafe_allow_html=True,
 )
 
 # ----------------------------------------------------------------------
-# Sidebar controls (these become interactive widgets on the web page)
+# Control bar (top row instead of a sidebar, to match the terminal look)
 # ----------------------------------------------------------------------
-with st.sidebar:
-    st.header("Settings")
-    ticker = st.text_input("Ticker symbol", value="BTC-USD")
-    n_states = st.slider("Number of regimes", min_value=2, max_value=8, value=7)
-    interval = st.selectbox("Bar interval", ["1h", "1d"], index=0)
-    period = st.selectbox("History to download", ["730d", "365d", "180d"], index=0)
-    run_button = st.button("Detect regimes", type="primary")
+c1, c2, c3, c4, c5 = st.columns([2, 1.4, 1, 1, 1.2])
+with c1:
+    ticker = st.text_input("TICKER", value="BTC-USD")
+with c2:
+    n_states = st.slider("REGIMES", min_value=2, max_value=8, value=7)
+with c3:
+    interval = st.selectbox("INTERVAL", ["1h", "1d"], index=0)
+with c4:
+    period = st.selectbox("HISTORY", ["730d", "365d", "180d"], index=0)
+with c5:
+    st.markdown("<div style='height:1.55rem'></div>", unsafe_allow_html=True)
+    run_button = st.button("RUN DETECTION", type="primary", use_container_width=True)
 
 
 # ----------------------------------------------------------------------
-# Caching: avoid re-downloading / re-fitting on every interaction.
+# Caching to avoid re-downloading / re-fitting on every interaction
 # ----------------------------------------------------------------------
-@st.cache_data(show_spinner=False)
-def get_prices(ticker: str, period: str, interval: str) -> pd.DataFrame:
-    return load_prices(ticker, period=period, interval=interval)
-
-
 @st.cache_resource(show_spinner=False)
 def fit_model(ticker: str, period: str, interval: str, n_states: int):
-    df = get_prices(ticker, period, interval)
+    df = load_prices(ticker, period=period, interval=interval)
     features = build_features(df)
     model = HMMPredictor(
-        n_components=n_states,
-        covariance_type="diag",
-        n_iter=300,
-        init_method="kmeans",
-        random_state=42,
+        n_components=n_states, covariance_type="diag",
+        n_iter=300, init_method="kmeans", random_state=42,
     )
     model.fit(features)
     states = model.predict_hidden_states(features)
@@ -71,57 +169,166 @@ def fit_model(ticker: str, period: str, interval: str, n_states: int):
 
 
 # ----------------------------------------------------------------------
-# Main action
+# Themed regime-overlay chart (matplotlib, dark)
+# ----------------------------------------------------------------------
+def regime_chart(df, features, states, ticker, n_states):
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    close = df["Close"].reindex(features.index)
+    fig, ax = plt.subplots(figsize=(11, 5.2))
+    fig.patch.set_facecolor("#0a0b0d")
+    ax.set_facecolor("#0a0b0d")
+    ax.plot(features.index, close.values, color="#3a3e45", linewidth=0.8, zorder=1)
+    sc = ax.scatter(features.index, close.values, c=states, cmap="Spectral",
+                    s=7, zorder=2, vmin=0, vmax=max(n_states - 1, 1))
+    ax.set_title(f"{ticker}  //  CLOSE PRICE BY DETECTED REGIME",
+                 color="#c9ccd1", fontsize=10, loc="left", family="monospace")
+    for spine in ax.spines.values():
+        spine.set_color("#23262b")
+    ax.tick_params(colors="#6b7078", labelsize=7)
+    ax.grid(color="#15171a", linewidth=0.5)
+    cbar = fig.colorbar(sc, ax=ax, fraction=0.025, pad=0.01)
+    cbar.set_label("REGIME", color="#6b7078", fontsize=7)
+    cbar.ax.yaxis.set_tick_params(color="#6b7078", labelsize=6)
+    plt.setp(plt.getp(cbar.ax.axes, "yticklabels"), color="#6b7078")
+    fig.tight_layout()
+    return fig
+
+
+def dist_chart(states, n_states):
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    counts = pd.Series(states).value_counts().reindex(range(n_states), fill_value=0)
+    fig, ax = plt.subplots(figsize=(11, 1.7))
+    fig.patch.set_facecolor("#0a0b0d")
+    ax.set_facecolor("#0a0b0d")
+    ax.bar(counts.index, counts.values, color="#7e2b22", edgecolor="#c0392b", width=0.7)
+    ax.set_title("REGIME DISTRIBUTION (BARS BY STATE)", color="#6b7078",
+                 fontsize=8, loc="left", family="monospace")
+    for spine in ax.spines.values():
+        spine.set_color("#23262b")
+    ax.tick_params(colors="#6b7078", labelsize=7)
+    fig.tight_layout()
+    return fig
+
+
+# ----------------------------------------------------------------------
+# HTML builders for the panels
+# ----------------------------------------------------------------------
+def panel(title_html: str, body_html: str) -> str:
+    return (f"<div class='panel'><div class='panel-h'>{title_html}</div>"
+            f"{body_html}</div>")
+
+
+def kv(k: str, v: str) -> str:
+    return f"<div class='kv'><span class='k'>{k}</span><span class='v'>{v}</span></div>"
+
+
+# ----------------------------------------------------------------------
+# Main render
 # ----------------------------------------------------------------------
 if run_button:
     try:
-        with st.spinner("Downloading data and fitting the model..."):
-            df, features, model, states = fit_model(
-                ticker, period, interval, n_states
-            )
+        with st.spinner("DOWNLOADING DATA // FITTING MODEL ..."):
+            df, features, model, states = fit_model(ticker, period, interval, n_states)
     except ConvergenceError as exc:
-        st.error(f"The model did not converge: {exc}")
+        st.error(f"MODEL DID NOT CONVERGE: {exc}")
         st.stop()
     except SingularCovarianceError as exc:
-        st.error(f"Covariance problem: {exc}")
+        st.error(f"COVARIANCE FAILURE: {exc}")
         st.stop()
-    except Exception as exc:  # noqa: BLE001 - surface anything else to the user
-        st.error(f"Something went wrong: {exc}")
+    except Exception as exc:  # noqa: BLE001
+        st.error(f"ERROR: {exc}")
         st.stop()
 
-    st.success(
-        f"Fitted {n_states} regimes on {len(features)} bars "
-        f"(log-likelihood {model.score_:.1f})."
-    )
+    summary = summarise_states(features, states)  # sorted by mean_return ascending
+    n_bars = len(features)
+    bull_state = int(summary["mean_return"].idxmax())
+    bear_state = int(summary["mean_return"].idxmin())
+    bull_bars = int((states == bull_state).sum())
+    bear_bars = int((states == bear_state).sum())
 
-    # --- Price chart coloured by regime --------------------------------
-    st.subheader(f"{ticker} price, coloured by detected regime")
-    close = df["Close"].reindex(features.index)
-    chart_df = pd.DataFrame({"price": close.values, "regime": states},
-                            index=features.index)
-    st.scatter_chart(chart_df, y="price", color="regime", height=420)
+    # Volatility tiers (by return_volatility) -> HIGH / MED / LOW counts
+    vol_sorted = summary.sort_values("return_volatility", ascending=False)
+    thirds = np.array_split(vol_sorted.index.to_numpy(), 3)
+    tier_counts = []
+    for grp in thirds:
+        tier_counts.append(int(np.isin(states, grp).sum()))
+    while len(tier_counts) < 3:
+        tier_counts.append(0)
 
-    # --- Regime summary table ------------------------------------------
-    st.subheader("Regime summary (sorted by average return)")
-    summary = summarise_states(features, states)
-    st.dataframe(summary, use_container_width=True)
+    left, center, right = st.columns([1.1, 2.3, 1.15])
 
-    # --- Forecast ------------------------------------------------------
-    st.subheader("Next-step forecast")
-    forecast = model.forecast_next(features, n_steps=3)
-    fc_rows = [
-        {
-            "step": f"t+{f['step']}",
-            "expected_return": f["expected_observation"][0],
-            "most_likely_regime": int(np.argmax(f["state_distribution"])),
-        }
-        for f in forecast["forecast"]
-    ]
-    st.table(pd.DataFrame(fc_rows))
+    # ---------------- LEFT: dossier + activity + tiers ----------------
+    with left:
+        body = (
+            kv("TICKER", ticker)
+            + kv("REGIMES", str(n_states))
+            + kv("INTERVAL", interval)
+            + kv("HISTORY", period)
+            + kv("BARS FITTED", f"{n_bars:,}")
+            + kv("LOG-LIKELIHOOD", f"{model.score_:,.1f}")
+            + kv("CONVERGED", "YES" if model.converged_ else "NO")
+        )
+        st.markdown(panel("MODEL <span>DOSSIER</span>", body), unsafe_allow_html=True)
 
-    st.caption(
-        "Regime IDs are arbitrary integers. The summary table tells you which "
-        "ID is the bull (highest mean return) and which is the bear/crash."
-    )
+        act = (
+            "<div class='statgrid'>"
+            f"<div class='stat'><div class='n'>{n_bars:,}</div><div class='l'>TOTAL</div></div>"
+            f"<div class='stat bull'><div class='n'>{bull_bars:,}</div><div class='l'>BULLISH</div></div>"
+            f"<div class='stat bear'><div class='n'>{bear_bars:,}</div><div class='l'>BEARISH</div></div>"
+            "</div>"
+        )
+        st.markdown(panel("REGIME <span>ACTIVITY</span>", act), unsafe_allow_html=True)
+
+        risk = ""
+        for cnt, lbl in zip(tier_counts, ["HIGH VOLATILITY", "MEDIUM VOLATILITY",
+                                          "LOW VOLATILITY"]):
+            risk += (f"<div class='risk'><div class='box'>{cnt:02d}</div>"
+                     f"<div class='lbl'>{lbl}</div></div>")
+        st.markdown(panel("VOLATILITY <span>TIERS</span>", risk), unsafe_allow_html=True)
+
+    # ---------------- CENTER: charts ----------------
+    with center:
+        st.pyplot(regime_chart(df, features, states, ticker, n_states),
+                  use_container_width=True)
+        st.pyplot(dist_chart(states, n_states), use_container_width=True)
+
+    # ---------------- RIGHT: regime list (ops list) ----------------
+    with right:
+        items = ""
+        # show highest-return regimes first (most "actionable")
+        for state_id, row in summary.sort_values("mean_return", ascending=False).iterrows():
+            label = row["label"] or "NEUTRAL REGIME"
+            tag = ("BULL" if state_id == bull_state
+                   else "BEAR" if state_id == bear_state else "NEUTRAL")
+            items += (
+                "<div class='op'>"
+                f"<div class='code'>REGIME // STATE {int(state_id)} &mdash; {tag}</div>"
+                f"<div class='ttl'>{label}</div>"
+                f"<div class='meta'>&mu; {row['mean_return']:+.5f} &nbsp; "
+                f"&sigma; {row['return_volatility']:.5f} &nbsp; n={int(row['n_obs']):,}</div>"
+                "</div>"
+            )
+        st.markdown(panel(f"REGIME <span>LIST ({n_states})</span>", items),
+                    unsafe_allow_html=True)
+
+        # Forecast panel
+        forecast = model.forecast_next(features, n_steps=3)
+        fc = ""
+        for f in forecast["forecast"]:
+            ml = int(np.argmax(f["state_distribution"]))
+            fc += kv(f"t+{f['step']}",
+                     f"E[ret] {f['expected_observation'][0]:+.5f} | state {ml}")
+        st.markdown(panel("FORECAST <span>(NEXT 3)</span>", fc), unsafe_allow_html=True)
 else:
-    st.info("Set your options in the sidebar, then click **Detect regimes**.")
+    st.markdown(
+        "<div class='panel'><div class='panel-h'>STANDBY</div>"
+        "<div class='kv'><span class='k'>Set parameters above and press "
+        "<b style='color:#c0392b'>RUN DETECTION</b> to begin.</span></div></div>",
+        unsafe_allow_html=True,
+    )
