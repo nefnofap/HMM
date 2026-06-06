@@ -1,0 +1,17 @@
+# Streamlit configuration for deployment (e.g. Streamlit Community Cloud).
+# Locks in the dark "command-center" theme so the hosted site matches local.
+
+[theme]
+base = "dark"
+primaryColor = "#c0392b"
+backgroundColor = "#0a0b0d"
+secondaryBackgroundColor = "#0e0f12"
+textColor = "#c9ccd1"
+font = "monospace"
+
+[server]
+headless = true
+# Streamlit Community Cloud sets the port automatically; do not hardcode it.
+
+[browser]
+gatherUsageStats = false
