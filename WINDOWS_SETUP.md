@@ -10,8 +10,16 @@ Follow it top to bottom.
 
 ## Step 1 - Install Python
 
+> **IMPORTANT - pick the right version.** Use **Python 3.10, 3.11, 3.12, or 3.13**.
+> Do **NOT** use Python 3.14 (the newest one). The `hmmlearn` library does not yet
+> ship a ready-made build for 3.14, so the install will fail with
+> `Microsoft Visual C++ 14.0 or greater is required`. Python 3.13 is the
+> recommended choice.
+
 1. Go to <https://www.python.org/downloads/windows/>.
-2. Click the big **"Download Python 3.12.x"** button (3.11 or 3.12 are both fine).
+2. Under **"Stable Releases"**, find the latest **Python 3.13.x** and click its
+   **"Windows installer (64-bit)"** link. (Do not just click the big top button -
+   that may be 3.14.)
 3. Run the downloaded installer.
 4. **VERY IMPORTANT:** On the first installer screen, tick the box at the bottom
    that says **"Add python.exe to PATH"**. If you skip this, the commands below
@@ -25,9 +33,10 @@ Follow it top to bottom.
 python --version
 ```
 
-You should see something like `Python 3.12.4`. If you instead see an error or
+You should see something like `Python 3.13.x`. If you instead see an error or
 the Microsoft Store opens, Python was not added to PATH - re-run the installer
-and make sure that box is ticked.
+and make sure that box is ticked. If it says `3.14.x`, install 3.13 (see the
+note above) and use `py -3.13 -m venv venv` in Step 4.
 
 ---
 
@@ -71,9 +80,12 @@ A "virtual environment" is a private box for this project's libraries so they
 don't clash with anything else on your PC. Create and activate it:
 
 ```
-python -m venv venv
+py -3.13 -m venv venv
 venv\Scripts\activate
 ```
+
+(If you only have one Python and it is 3.13 or lower, you can use
+`python -m venv venv` instead of `py -3.13 -m venv venv`.)
 
 After the second command your prompt line will start with **`(venv)`**. That
 means the box is active. **You must run this `activate` line every time you open
@@ -166,6 +178,7 @@ You do **not** repeat Steps 1-5 - those are one-time.
 | PowerShell error: *"running scripts is disabled"* | Use **Command Prompt (cmd)** instead of PowerShell. |
 | `(venv)` is not showing | You didn't activate it. Run `venv\Scripts\activate` again. |
 | `pip install` shows red ERRORs | Make sure `(venv)` is active and run `python -m pip install --upgrade pip` first, then retry. |
+| `Microsoft Visual C++ 14.0 or greater is required` (building hmmlearn) | You are on **Python 3.14**, which has no prebuilt `hmmlearn`. Run `rmdir /s /q venv`, install **Python 3.13**, recreate with `py -3.13 -m venv venv`, activate, then reinstall. |
 | Browser didn't open for Streamlit | Manually visit <http://localhost:8501>. |
 | Streamlit page says download failed | It will use practice data automatically; or check your internet connection. |
 
