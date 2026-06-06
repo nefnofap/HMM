@@ -243,8 +243,8 @@ st.markdown(
         </div>
       </div>
       <div class="nav-right">
-        <div class="nav-social"><span>&#120143;</span><span>&#9670;</span><span>&#9673;</span></div>
-        <div class="nav-cta">Get started &rarr;</div>
+        <a class="nav-cta" href="https://discord.gg/MSXdaexYdH" target="_blank"
+           style="text-decoration:none;">Join Discord &rarr;</a>
       </div>
     </div>
     <div class="hero">
@@ -718,7 +718,8 @@ st.markdown(
           backtesting and signal scanning across 43 instruments. Research and
           education only &mdash; not financial advice.</p>
         </div>
-        <div class="f-pill">Get started &rarr;</div>
+        <a class="f-pill" href="https://discord.gg/MSXdaexYdH" target="_blank"
+           style="text-decoration:none;">Join Discord &rarr;</a>
       </div>
       <div class="f-cols">
         <div class="f-col">
@@ -739,10 +740,18 @@ st.markdown(
           <a href="https://github.com/nefnofap/hmm" target="_blank">GitHub</a>
           <a>Guide</a><a>Deploy</a><a>Windows setup</a>
         </div>
+        <div class="f-col">
+          <h4>Community</h4>
+          <a href="https://discord.gg/MSXdaexYdH" target="_blank">Discord server</a>
+          <a>Discord: lucii_aaa</a>
+          <a href="https://www.tiktok.com/@nogodrai" target="_blank">TikTok: @nogodrai</a>
+          <a href="https://www.instagram.com/lucii.flow" target="_blank">Instagram: lucii.flow</a>
+        </div>
       </div>
       <div class="f-bottom">
         &copy; 2026 Regime Terminal &middot; Open source on
         <a href="https://github.com/nefnofap/hmm" target="_blank" style="color:var(--accent);">GitHub</a>
+        &middot; Join the <a href="https://discord.gg/MSXdaexYdH" target="_blank" style="color:var(--accent);">Discord</a>
         &middot; Research only &mdash; not financial advice.
       </div>
     </div>
