@@ -75,22 +75,63 @@ html, body, [class*="css"], .stApp {
 .block-container { padding-top:1.2rem; max-width:1620px; }
 #MainMenu, footer, header { visibility:hidden; }
 
-/* Header */
-.term-header { display:flex; justify-content:space-between; align-items:center;
-  padding:.1rem .2rem 1rem; margin-bottom:1.1rem;
-  border-bottom:1px solid var(--border); }
-.term-title { font-size:1.5rem; letter-spacing:-.5px; font-weight:800;
-  display:flex; align-items:center; gap:.6rem; }
-.term-title .dot { width:14px; height:14px; border-radius:50%;
+/* Top nav bar (Cryptoverse-style) */
+.navbar { display:flex; justify-content:space-between; align-items:center;
+  padding:.2rem .2rem 1rem; margin-bottom:1.4rem; border-bottom:1px solid var(--border); }
+.nav-left { display:flex; align-items:center; gap:2.2rem; }
+.brand { font-size:1.18rem; font-weight:800; letter-spacing:-.3px;
+  display:flex; align-items:center; gap:.55rem; }
+.brand .logo { width:18px; height:18px; transform:rotate(45deg); border-radius:5px;
   background:linear-gradient(135deg,var(--accent),var(--accent2));
-  box-shadow:0 0 18px rgba(110,139,255,0.7); }
-.term-title b { background:linear-gradient(135deg,#fff,#9fb0ff);
-  -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; }
+  box-shadow:0 0 16px rgba(110,139,255,0.65); }
+.nav-links { display:flex; gap:1.5rem; }
+.nav-links a { color:var(--muted); font-size:.82rem; font-weight:500; text-decoration:none; }
+.nav-links a.active, .nav-links a:hover { color:var(--text); }
+.nav-right { display:flex; align-items:center; gap:1.1rem; }
+.nav-social { display:flex; gap:.85rem; color:var(--muted); font-size:.8rem; }
+.nav-social span { opacity:.8; }
+.nav-cta { font-size:.8rem; font-weight:600; color:#fff; padding:.5rem 1.15rem;
+  border-radius:999px; background:rgba(255,255,255,0.08);
+  border:1px solid var(--border-strong); }
+
+/* Giant silver-gradient hero heading */
+.hero { text-align:center; padding:2.2rem 0 .6rem; position:relative; }
+.hero h1 { font-size:6.5rem; line-height:.95; font-weight:800; letter-spacing:-3px; margin:0;
+  background:linear-gradient(180deg,#ffffff 0%,#b9bec9 38%,#42454e 100%);
+  -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent;
+  filter:drop-shadow(0 10px 40px rgba(110,139,255,0.18)); }
+.hero .tagline { font-size:1.6rem; font-weight:700; margin-top:-.4rem;
+  background:linear-gradient(180deg,#fff,#aab1c4); -webkit-background-clip:text;
+  background-clip:text; -webkit-text-fill-color:transparent; }
+.hero .lead { color:var(--muted); font-size:.9rem; max-width:560px; margin:.8rem auto 0; line-height:1.5; }
 .term-sub { font-size:.68rem; color:var(--muted); letter-spacing:1.5px;
   text-transform:uppercase; font-weight:500; }
 .term-badge { font-size:.6rem; color:var(--amber); letter-spacing:1.5px;
   border:1px solid rgba(255,194,75,0.35); border-radius:999px; padding:.3rem .7rem;
   background:rgba(255,194,75,0.06); }
+
+/* Footer (Cryptoverse-style overlapping card) */
+.footer { border:1px solid var(--border); border-radius:24px; margin-top:2rem;
+  padding:2rem 2.2rem 1.4rem; background:var(--panel); position:relative; overflow:hidden;
+  backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px); }
+.footer:before { content:''; position:absolute; right:-10%; top:-40%; width:60%; height:180%;
+  background:radial-gradient(circle at 70% 50%, rgba(110,139,255,0.18), transparent 60%);
+  pointer-events:none; }
+.footer .f-cta { display:flex; justify-content:space-between; align-items:flex-start;
+  gap:1rem; padding-bottom:1.6rem; border-bottom:1px solid var(--border); margin-bottom:1.4rem; }
+.footer .f-cta h2 { font-size:1.9rem; font-weight:800; margin:0; max-width:480px; letter-spacing:-.5px; }
+.footer .f-cta p { color:var(--muted); font-size:.82rem; margin-top:.6rem; max-width:480px; }
+.footer .f-pill { font-size:.82rem; font-weight:600; color:#fff; padding:.6rem 1.3rem;
+  border-radius:999px; background:rgba(255,255,255,0.08); border:1px solid var(--border-strong);
+  white-space:nowrap; }
+.footer .f-cols { display:flex; flex-wrap:wrap; gap:2.5rem; }
+.footer .f-col h4 { font-size:.66rem; letter-spacing:1px; text-transform:uppercase;
+  color:var(--muted); margin:0 0 .7rem; font-weight:600; }
+.footer .f-col a { display:block; color:var(--text); font-size:.8rem; text-decoration:none;
+  margin-bottom:.45rem; opacity:.85; }
+.footer .f-col a:hover { opacity:1; }
+.footer .f-bottom { color:var(--muted); font-size:.72rem; margin-top:1.6rem;
+  padding-top:1.1rem; border-top:1px solid var(--border); }
 
 /* Glass panels */
 .panel { border:1px solid var(--border); background:var(--panel);
@@ -164,7 +205,7 @@ html, body, [class*="css"], .stApp {
   text-transform:uppercase; font-weight:600;
 }
 .stButton button { background:linear-gradient(135deg,var(--accent),var(--accent2))!important;
-  color:#fff!important; border:none!important; border-radius:12px!important;
+  color:#fff!important; border:none!important; border-radius:999px!important;
   font-family:'Inter',sans-serif!important; font-weight:700!important; letter-spacing:.5px;
   box-shadow:0 6px 20px rgba(110,139,255,0.35); }
 .stButton button:hover { filter:brightness(1.1); box-shadow:0 8px 26px rgba(110,139,255,0.5); }
@@ -191,12 +232,27 @@ st.markdown(THEME_CSS, unsafe_allow_html=True)
 
 st.markdown(
     """
-    <div class="term-header">
-      <div>
-        <div class="term-title"><span class="dot"></span>Regime <b>Terminal</b></div>
-        <div class="term-sub">Hidden Markov Model &middot; Multi-Asset Regime Detection</div>
+    <div class="navbar">
+      <div class="nav-left">
+        <div class="brand"><span class="logo"></span>Regime Terminal</div>
+        <div class="nav-links">
+          <a class="active">Analysis</a>
+          <a>Scanner</a>
+          <a>Optimizer</a>
+          <a>Docs</a>
+        </div>
       </div>
-      <div class="term-badge">RESEARCH BUILD &mdash; NOT FINANCIAL ADVICE</div>
+      <div class="nav-right">
+        <div class="nav-social"><span>&#120143;</span><span>&#9670;</span><span>&#9673;</span></div>
+        <div class="nav-cta">Get started &rarr;</div>
+      </div>
+    </div>
+    <div class="hero">
+      <h1>REGIME</h1>
+      <div class="tagline">Detect the market's hidden state, today.</div>
+      <div class="lead">A Hidden Markov Model engine that classifies market regimes
+      across 43 instruments &mdash; crypto, metals, forex, indices, commodities and
+      stocks. Research build &mdash; not financial advice.</div>
     </div>
     """,
     unsafe_allow_html=True,
@@ -646,3 +702,50 @@ with tab_optimizer:
                     "<b style='color:#c0392b'>RUN OPTIMIZER</b>. This re-fits the model "
                     "many times - give it a minute.</span></div></div>",
                     unsafe_allow_html=True)
+
+
+
+# ======================================================================
+# FOOTER (Cryptoverse-style)
+# ======================================================================
+st.markdown(
+    """
+    <div class="footer">
+      <div class="f-cta">
+        <div>
+          <h2>Read the market's hidden regime, today.</h2>
+          <p>An open-source Hidden Markov Model engine for regime detection,
+          backtesting and signal scanning across 43 instruments. Research and
+          education only &mdash; not financial advice.</p>
+        </div>
+        <div class="f-pill">Get started &rarr;</div>
+      </div>
+      <div class="f-cols">
+        <div class="f-col">
+          <div class="brand" style="margin-bottom:.6rem;"><span class="logo"></span>Regime Terminal</div>
+          <p style="color:var(--muted); font-size:.78rem; max-width:220px;">
+          HMM-based market regime detection &amp; strategy research toolkit.</p>
+        </div>
+        <div class="f-col">
+          <h4>Tools</h4>
+          <a>Analysis</a><a>Scanner</a><a>Optimizer</a><a>Walk-forward</a><a>Position sizing</a>
+        </div>
+        <div class="f-col">
+          <h4>Instruments</h4>
+          <a>Crypto</a><a>Metals</a><a>Forex</a><a>Indices</a><a>Stocks</a>
+        </div>
+        <div class="f-col">
+          <h4>Resources</h4>
+          <a href="https://github.com/nefnofap/hmm" target="_blank">GitHub</a>
+          <a>Guide</a><a>Deploy</a><a>Windows setup</a>
+        </div>
+      </div>
+      <div class="f-bottom">
+        &copy; 2026 Regime Terminal &middot; Open source on
+        <a href="https://github.com/nefnofap/hmm" target="_blank" style="color:var(--accent);">GitHub</a>
+        &middot; Research only &mdash; not financial advice.
+      </div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
