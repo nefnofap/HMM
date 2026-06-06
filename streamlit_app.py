@@ -37,6 +37,7 @@ from levels import (LevelConfig, compute_levels, position_size,
 from walkforward import walkforward_backtest
 from scanner import scan
 from optimizer import optimize, DEFAULT_GRID
+import discord_auth
 
 CONFIRMATION_LABELS = {
     "rsi_not_overbought": "RSI not overbought",
@@ -378,6 +379,84 @@ def metrics_cards_html(m, n_trades, label):
         + metric_card("WIN %", m["win_rate"]*100, "{:.0f}%", m["win_rate"]>0.5)
         + metric_card("TRADES", n_trades, "{:d}"))
     return panel(label, f"<div class='metricgrid'>{cards}</div>")
+
+
+# ======================================================================
+# DISCORD GATE - only members of the configured server can use the site.
+# ======================================================================
+def _login_screen(authorize_url: str, invite_url: str) -> None:
+    """Themed Discord login screen."""
+    st.markdown(
+        f"""
+        <div class='panel' style='max-width:560px; margin:2rem auto; text-align:center;
+             padding:2.4rem 2rem;'>
+          <div style='font-size:.62rem; letter-spacing:2px; color:var(--accent);
+               text-transform:uppercase; font-weight:600;'>members only</div>
+          <h2 style='font-family:var(--display); font-style:italic; font-size:3.6rem;
+               margin:.4rem 0 .6rem; font-weight:900;
+               background:linear-gradient(180deg,#fff 0%,#dfe2eb 50%,#9aa0ad 100%);
+               -webkit-background-clip:text; background-clip:text;
+               -webkit-text-fill-color:transparent;'>access</h2>
+          <p style='color:var(--muted); font-size:.82rem; line-height:1.55; margin-bottom:1.4rem;'>
+          The terminal is gated to members of our Discord. Sign in with Discord to verify
+          your membership and continue. Research only &mdash; not financial advice.</p>
+          <a href='{authorize_url}' style='display:inline-block; text-decoration:none;
+             color:#fff; padding:.75rem 1.6rem; border-radius:999px;
+             background:linear-gradient(135deg,#5865F2,#7289da);
+             box-shadow:0 6px 22px rgba(88,101,242,0.45); font-weight:700; letter-spacing:.5px;'>
+             Login with Discord &rarr;</a>
+          <div style='margin-top:1.1rem; font-size:.72rem; color:var(--muted);'>
+            Not a member yet? <a href='{invite_url}' target='_blank'
+              style='color:var(--accent);'>Join the server</a>.
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def _denied_screen(user, invite_url: str) -> None:
+    """Themed denied screen for users who aren't in the server."""
+    name = discord_auth.display_name(user)
+    av = discord_auth.avatar_url(user, 96) or ""
+    avatar_html = (f"<img src='{av}' style='width:64px;height:64px;border-radius:50%;"
+                   f"border:1px solid var(--border);margin-bottom:.8rem;'/>") if av else ""
+    st.markdown(
+        f"""
+        <div class='panel' style='max-width:560px; margin:2rem auto; text-align:center;
+             padding:2.4rem 2rem;'>
+          {avatar_html}
+          <div style='font-size:.62rem; letter-spacing:2px; color:var(--red);
+               text-transform:uppercase; font-weight:600;'>access denied</div>
+          <h2 style='font-family:var(--display); font-style:italic; font-size:2.6rem;
+               margin:.4rem 0 .6rem; font-weight:900; color:#fff;'>hi, {name}.</h2>
+          <p style='color:var(--muted); font-size:.82rem; line-height:1.55; margin-bottom:1.4rem;'>
+          You're signed in with Discord, but you're not in our server yet. Join the
+          community and refresh this page to continue.</p>
+          <a href='{invite_url}' target='_blank' style='display:inline-block;
+             text-decoration:none; color:#fff; padding:.75rem 1.6rem; border-radius:999px;
+             background:linear-gradient(135deg,#5865F2,#7289da);
+             box-shadow:0 6px 22px rgba(88,101,242,0.45); font-weight:700; letter-spacing:.5px;'>
+             Join the Discord &rarr;</a>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+_user = discord_auth.require_login(render_login=_login_screen,
+                                   render_denied=_denied_screen)
+if _user is not None:
+    _name = discord_auth.display_name(_user)
+    _av = discord_auth.avatar_url(_user, 32)
+    _avatar_html = (f"<img src='{_av}' style='width:18px;height:18px;border-radius:50%;"
+                    f"vertical-align:middle;margin-right:.4rem;'/>") if _av else ""
+    st.markdown(
+        f"<div style='text-align:right;font-size:.72rem;color:var(--muted);"
+        f"margin:-.4rem 0 .4rem;'>{_avatar_html}signed in as <span style='color:var(--text);'>"
+        f"{_name}</span> &middot; verified Discord member</div>",
+        unsafe_allow_html=True,
+    )
 
 
 # ======================================================================
