@@ -81,9 +81,9 @@ html, body, [class*="css"], .stApp {
 .nav-left { display:flex; align-items:center; gap:2.2rem; }
 .brand { font-size:1.18rem; font-weight:800; letter-spacing:-.3px;
   display:flex; align-items:center; gap:.55rem; }
-.brand .logo { width:18px; height:18px; transform:rotate(45deg); border-radius:5px;
-  background:linear-gradient(135deg,var(--accent),var(--accent2));
-  box-shadow:0 0 16px rgba(110,139,255,0.65); }
+.brand .logo { width:22px; height:22px; display:inline-flex; align-items:center;
+  filter:drop-shadow(0 0 10px rgba(110,139,255,0.6)); }
+.brand .logo svg { width:22px; height:22px; }
 .nav-links { display:flex; gap:1.5rem; }
 .nav-links a { color:var(--muted); font-size:.82rem; font-weight:500; text-decoration:none; }
 .nav-links a.active, .nav-links a:hover { color:var(--text); }
@@ -230,16 +230,29 @@ html, body, [class*="css"], .stApp {
 """
 st.markdown(THEME_CSS, unsafe_allow_html=True)
 
+LOGO_SVG = (
+    "<svg viewBox='0 0 32 32' fill='none' xmlns='http://www.w3.org/2000/svg'>"
+    "<defs><linearGradient id='lg' x1='0' y1='0' x2='32' y2='32'>"
+    "<stop offset='0' stop-color='#9b7bff'/><stop offset='1' stop-color='#6e8bff'/>"
+    "</linearGradient></defs>"
+    "<path d='M16 1 L31 16 L16 31 L1 16 Z' fill='url(#lg)'/>"
+    "<path d='M16 1 L31 16 L16 16 Z' fill='#ffffff' fill-opacity='0.30'/>"
+    "<path d='M1 16 L16 16 L16 31 Z' fill='#000000' fill-opacity='0.22'/>"
+    "<path d='M16 1 L16 16 L1 16 Z' fill='#ffffff' fill-opacity='0.14'/>"
+    "<path d='M16 7 L25 16 L16 25 L7 16 Z' fill='#0a0b12' fill-opacity='0.45'/>"
+    "<path d='M16 7 L25 16 L16 16 Z' fill='#cfd6ff' fill-opacity='0.55'/>"
+    "</svg>"
+)
+
 st.markdown(
-    """
+    f"""
     <div class="navbar">
       <div class="nav-left">
-        <div class="brand"><span class="logo"></span>Regime Terminal</div>
+        <div class="brand"><span class="logo">{LOGO_SVG}</span>Regime Terminal</div>
         <div class="nav-links">
           <a class="active">Analysis</a>
           <a>Scanner</a>
           <a>Optimizer</a>
-          <a>Docs</a>
         </div>
       </div>
       <div class="nav-right">
@@ -709,7 +722,7 @@ with tab_optimizer:
 # FOOTER (Cryptoverse-style)
 # ======================================================================
 st.markdown(
-    """
+    f"""
     <div class="footer">
       <div class="f-cta">
         <div>
@@ -723,7 +736,7 @@ st.markdown(
       </div>
       <div class="f-cols">
         <div class="f-col">
-          <div class="brand" style="margin-bottom:.6rem;"><span class="logo"></span>Regime Terminal</div>
+          <div class="brand" style="margin-bottom:.6rem;"><span class="logo">{LOGO_SVG}</span>Regime Terminal</div>
           <p style="color:var(--muted); font-size:.78rem; max-width:220px;">
           HMM-based market regime detection &amp; strategy research toolkit.</p>
         </div>
@@ -736,11 +749,6 @@ st.markdown(
           <a>Crypto</a><a>Metals</a><a>Forex</a><a>Indices</a><a>Stocks</a>
         </div>
         <div class="f-col">
-          <h4>Resources</h4>
-          <a href="https://github.com/nefnofap/hmm" target="_blank">GitHub</a>
-          <a>Guide</a><a>Deploy</a><a>Windows setup</a>
-        </div>
-        <div class="f-col">
           <h4>Community</h4>
           <a href="https://discord.gg/MSXdaexYdH" target="_blank">Discord server</a>
           <a>Discord: lucii_aaa</a>
@@ -749,9 +757,8 @@ st.markdown(
         </div>
       </div>
       <div class="f-bottom">
-        &copy; 2026 Regime Terminal &middot; Open source on
-        <a href="https://github.com/nefnofap/hmm" target="_blank" style="color:var(--accent);">GitHub</a>
-        &middot; Join the <a href="https://discord.gg/MSXdaexYdH" target="_blank" style="color:var(--accent);">Discord</a>
+        &copy; 2026 Regime Terminal &middot;
+        Join the <a href="https://discord.gg/MSXdaexYdH" target="_blank" style="color:var(--accent);">Discord</a>
         &middot; Research only &mdash; not financial advice.
       </div>
     </div>
