@@ -155,3 +155,41 @@ def confirmation_matrix(df: pd.DataFrame,
     conf[bool_cols] = conf[bool_cols].fillna(False)
     conf["n_confirmations"] = conf[bool_cols].sum(axis=1).astype(int)
     return conf
+
+
+
+def latest_readings(df: pd.DataFrame,
+                    cfg: ConfirmationConfig | None = None) -> Dict[str, str]:
+    """
+    Human-readable current values for each confirmation (for the dashboard
+    checklist). Returns a dict keyed by the same names as confirmation_matrix.
+    """
+    cfg = cfg or ConfirmationConfig()
+    close, vol = df["Close"], df["Volume"]
+    rsi_v = rsi(close, cfg.rsi_window).iloc[-1]
+    macd_v = macd(close, cfg.macd_fast, cfg.macd_slow, cfg.macd_signal)
+    macd_line = macd_v["macd"].iloc[-1]
+    signal_line = macd_v["signal"].iloc[-1]
+    sma_fast = close.rolling(cfg.sma_fast).mean().iloc[-1]
+    sma_slow = close.rolling(cfg.sma_slow).mean().iloc[-1]
+    mom = roc(close, cfg.momentum_window).iloc[-1] * 100
+    adx_v = adx(df, cfg.adx_window).iloc[-1]
+    vol_now = vol.iloc[-1]
+    vol_sma = vol.rolling(cfg.vol_window).mean().iloc[-1]
+
+    def f(x, p=1):
+        try:
+            return f"{x:,.{p}f}"
+        except Exception:  # noqa: BLE001
+            return "-"
+
+    return {
+        "rsi_not_overbought": f"RSI {f(rsi_v)}",
+        "rsi_strength": f"RSI {f(rsi_v)}",
+        "macd_bullish": f"{f(macd_line, 3)} vs {f(signal_line, 3)}",
+        "price_above_sma": f"px vs SMA{cfg.sma_slow} {f(sma_slow)}",
+        "ma_crossover": f"{f(sma_fast)} / {f(sma_slow)}",
+        "positive_momentum": f"ROC {f(mom)}%",
+        "adx_trending": f"ADX {f(adx_v)}",
+        "volume_participation": f"vol {f(vol_now,0)} vs {f(vol_sma,0)}",
+    }

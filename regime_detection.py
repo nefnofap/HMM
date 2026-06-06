@@ -51,28 +51,107 @@ from hmm_predictor import HMMPredictor
 
 
 # ----------------------------------------------------------------------
-# Multi-asset support: friendly aliases -> Yahoo Finance symbols
+# Multi-asset support: instrument catalog + aliases -> Yahoo Finance symbols
 # ----------------------------------------------------------------------
-# Users can type "GOLD", "XAU", "BTC", "ETH" etc. and we map to the real
-# Yahoo Finance ticker. Add more here as you expand coverage.
+# The dashboard reads INSTRUMENT_CATALOG to build category + instrument
+# dropdowns. The CLI accepts short aliases (e.g. "BTC", "GOLD"). Add more
+# instruments by editing INSTRUMENT_CATALOG below.
+# INSTRUMENT CATALOG -- organised by category for the dashboard dropdown.
+# Each entry maps a friendly display name -> Yahoo Finance symbol.
+INSTRUMENT_CATALOG: Dict[str, Dict[str, str]] = {
+    "Crypto": {
+        "Bitcoin (BTC)": "BTC-USD",
+        "Ethereum (ETH)": "ETH-USD",
+        "Solana (SOL)": "SOL-USD",
+        "BNB": "BNB-USD",
+        "XRP": "XRP-USD",
+        "Cardano (ADA)": "ADA-USD",
+        "Dogecoin (DOGE)": "DOGE-USD",
+        "Avalanche (AVAX)": "AVAX-USD",
+        "Polkadot (DOT)": "DOT-USD",
+        "Chainlink (LINK)": "LINK-USD",
+        "Litecoin (LTC)": "LTC-USD",
+        "Polygon (MATIC)": "MATIC-USD",
+    },
+    "Metals": {
+        "Gold (XAUUSD)": "GC=F",
+        "Silver (XAGUSD)": "SI=F",
+        "Platinum": "PL=F",
+        "Copper": "HG=F",
+    },
+    "Forex": {
+        "EUR/USD": "EURUSD=X",
+        "GBP/USD": "GBPUSD=X",
+        "USD/JPY": "JPY=X",
+        "USD/CHF": "CHF=X",
+        "AUD/USD": "AUDUSD=X",
+        "USD/CAD": "CAD=X",
+        "NZD/USD": "NZDUSD=X",
+    },
+    "Indices": {
+        "S&P 500": "^GSPC",
+        "Nasdaq 100": "^NDX",
+        "Nasdaq Composite": "^IXIC",
+        "Dow Jones": "^DJI",
+        "Russell 2000": "^RUT",
+        "VIX (Volatility)": "^VIX",
+        "FTSE 100": "^FTSE",
+        "Nikkei 225": "^N225",
+    },
+    "Commodities": {
+        "Crude Oil (WTI)": "CL=F",
+        "Natural Gas": "NG=F",
+        "Brent Crude": "BZ=F",
+    },
+    "Stocks": {
+        "Apple (AAPL)": "AAPL",
+        "Microsoft (MSFT)": "MSFT",
+        "NVIDIA (NVDA)": "NVDA",
+        "Tesla (TSLA)": "TSLA",
+        "Amazon (AMZN)": "AMZN",
+        "Meta (META)": "META",
+        "Alphabet (GOOGL)": "GOOGL",
+        "MicroStrategy (MSTR)": "MSTR",
+        "Coinbase (COIN)": "COIN",
+    },
+}
+
+# Flat display-name -> symbol map for quick lookup.
+DISPLAY_TO_SYMBOL: Dict[str, str] = {
+    name: sym for group in INSTRUMENT_CATALOG.values() for name, sym in group.items()
+}
+
+# Short aliases (case-insensitive) for the CLI / text entry.
 TICKER_ALIASES: Dict[str, str] = {
-    "BTC": "BTC-USD",
-    "BITCOIN": "BTC-USD",
-    "ETH": "ETH-USD",
-    "ETHEREUM": "ETH-USD",
-    "XAU": "GC=F",          # COMEX gold futures (good hourly history)
-    "XAUUSD": "GC=F",
-    "GOLD": "GC=F",
-    "SOL": "SOL-USD",
-    "SPX": "^GSPC",
-    "SP500": "^GSPC",
-    "NASDAQ": "^IXIC",
+    "BTC": "BTC-USD", "BITCOIN": "BTC-USD",
+    "ETH": "ETH-USD", "ETHEREUM": "ETH-USD",
+    "SOL": "SOL-USD", "BNB": "BNB-USD", "XRP": "XRP-USD", "ADA": "ADA-USD",
+    "DOGE": "DOGE-USD", "AVAX": "AVAX-USD", "DOT": "DOT-USD", "LINK": "LINK-USD",
+    "LTC": "LTC-USD", "MATIC": "MATIC-USD",
+    "XAU": "GC=F", "XAUUSD": "GC=F", "GOLD": "GC=F",
+    "XAG": "SI=F", "XAGUSD": "SI=F", "SILVER": "SI=F",
+    "PLATINUM": "PL=F", "COPPER": "HG=F",
+    "EURUSD": "EURUSD=X", "GBPUSD": "GBPUSD=X", "USDJPY": "JPY=X",
+    "USDCHF": "CHF=X", "AUDUSD": "AUDUSD=X", "USDCAD": "CAD=X",
+    "NZDUSD": "NZDUSD=X",
+    "SPX": "^GSPC", "SP500": "^GSPC", "NDX": "^NDX", "NASDAQ": "^IXIC",
+    "DOW": "^DJI", "RUSSELL": "^RUT", "VIX": "^VIX",
+    "FTSE": "^FTSE", "NIKKEI": "^N225",
+    "OIL": "CL=F", "WTI": "CL=F", "NATGAS": "NG=F", "BRENT": "BZ=F",
 }
 
 
 def resolve_ticker(ticker: str) -> str:
-    """Map a friendly alias (case-insensitive) to a Yahoo Finance symbol."""
-    return TICKER_ALIASES.get(ticker.strip().upper(), ticker)
+    """Map a friendly alias or display name (case-insensitive) to a symbol."""
+    t = ticker.strip()
+    if t in DISPLAY_TO_SYMBOL:          # exact dropdown display name
+        return DISPLAY_TO_SYMBOL[t]
+    return TICKER_ALIASES.get(t.upper(), t)
+
+
+def is_crypto_symbol(symbol: str) -> bool:
+    """True if the resolved symbol is a 24/7 crypto pair."""
+    return symbol.upper().endswith("-USD")
 
 
 def periods_per_year_for(interval: str, ticker: str) -> float:
@@ -80,8 +159,8 @@ def periods_per_year_for(interval: str, ticker: str) -> float:
     Bars per year for annualising metrics. Crypto trades 24/7; gold/equity
     futures and indices trade fewer hours, so we approximate accordingly.
     """
-    resolved = resolve_ticker(ticker).upper()
-    is_crypto = resolved.endswith("-USD")
+    resolved = resolve_ticker(ticker)
+    is_crypto = is_crypto_symbol(resolved)
     if interval == "1h":
         return 24 * 365 if is_crypto else 6.5 * 252  # ~1638 for non-crypto
     if interval == "1d":
