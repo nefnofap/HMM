@@ -42,7 +42,7 @@ Notes
 from __future__ import annotations
 
 import argparse
-from typing import Optional
+from typing import Dict, List, Optional
 
 import numpy as np
 import pandas as pd
@@ -51,19 +51,63 @@ from hmm_predictor import HMMPredictor
 
 
 # ----------------------------------------------------------------------
+# Multi-asset support: friendly aliases -> Yahoo Finance symbols
+# ----------------------------------------------------------------------
+# Users can type "GOLD", "XAU", "BTC", "ETH" etc. and we map to the real
+# Yahoo Finance ticker. Add more here as you expand coverage.
+TICKER_ALIASES: Dict[str, str] = {
+    "BTC": "BTC-USD",
+    "BITCOIN": "BTC-USD",
+    "ETH": "ETH-USD",
+    "ETHEREUM": "ETH-USD",
+    "XAU": "GC=F",          # COMEX gold futures (good hourly history)
+    "XAUUSD": "GC=F",
+    "GOLD": "GC=F",
+    "SOL": "SOL-USD",
+    "SPX": "^GSPC",
+    "SP500": "^GSPC",
+    "NASDAQ": "^IXIC",
+}
+
+
+def resolve_ticker(ticker: str) -> str:
+    """Map a friendly alias (case-insensitive) to a Yahoo Finance symbol."""
+    return TICKER_ALIASES.get(ticker.strip().upper(), ticker)
+
+
+def periods_per_year_for(interval: str, ticker: str) -> float:
+    """
+    Bars per year for annualising metrics. Crypto trades 24/7; gold/equity
+    futures and indices trade fewer hours, so we approximate accordingly.
+    """
+    resolved = resolve_ticker(ticker).upper()
+    is_crypto = resolved.endswith("-USD")
+    if interval == "1h":
+        return 24 * 365 if is_crypto else 6.5 * 252  # ~1638 for non-crypto
+    if interval == "1d":
+        return 365 if is_crypto else 252
+    if interval == "1wk":
+        return 52
+    # default to daily-crypto assumption
+    return 365
+
+
+# ----------------------------------------------------------------------
 # Data loading
 # ----------------------------------------------------------------------
 def load_prices(ticker: str = "BTC-USD", period: str = "730d",
                 interval: str = "1h") -> pd.DataFrame:
     """
-    Download OHLCV data from Yahoo Finance. Falls back to synthetic data if
-    yfinance is unavailable or returns nothing.
+    Download OHLCV data from Yahoo Finance. Accepts friendly aliases
+    (e.g. "GOLD", "XAUUSD", "BTC"). Falls back to synthetic data if yfinance
+    is unavailable or returns nothing.
     """
+    resolved = resolve_ticker(ticker)
     try:
         import yfinance as yf
 
         df = yf.download(
-            ticker, period=period, interval=interval,
+            resolved, period=period, interval=interval,
             auto_adjust=True, progress=False,
         )
         if df is None or df.empty:
@@ -72,10 +116,11 @@ def load_prices(ticker: str = "BTC-USD", period: str = "730d",
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = df.columns.get_level_values(0)
         df = df[["Open", "High", "Low", "Close", "Volume"]].dropna()
-        print(f"Downloaded {len(df)} {interval} bars for {ticker}.")
+        print(f"Downloaded {len(df)} {interval} bars for {ticker} ({resolved}).")
         return df
     except Exception as exc:  # network/import/data issues -> synthetic fallback
-        print(f"[load_prices] yfinance unavailable ({exc}); using synthetic data.")
+        print(f"[load_prices] yfinance unavailable for {ticker} ({exc}); "
+              f"using synthetic data.")
         return _synthetic_ohlcv()
 
 
@@ -197,14 +242,61 @@ def run(ticker: str = "BTC-USD", n_states: int = 7,
     plot_regimes(df, features, states, ticker)
 
     # Persist learned parameters for the web backend (Phase 2/3 reuse).
-    predictor.save("btc_regime_model.json")
-    print("\nModel parameters saved to btc_regime_model.json")
+    safe = resolve_ticker(ticker).replace("=", "").replace("^", "").replace("-", "_")
+    model_path = f"{safe.lower()}_regime_model.json"
+    predictor.save(model_path)
+    print(f"\nModel parameters saved to {model_path}")
     return summary
+
+
+def run_multi(tickers: List[str], n_states: int = 7,
+              period: str = "730d", interval: str = "1h") -> pd.DataFrame:
+    """
+    Fit a SEPARATE regime model per asset and return a side-by-side comparison
+    of strategy metrics. Each asset gets its own HMM because regimes (and their
+    volatility) differ across BTC, ETH and gold - one shared model would blur
+    them. Uses the regime backtest from backtest.py.
+    """
+    from backtest import backtest_regime_strategy
+    from metrics import summary as metric_summary
+
+    rows = []
+    for tk in tickers:
+        try:
+            df = load_prices(tk, period=period, interval=interval)
+            features = build_features(df)
+            model = HMMPredictor(n_components=n_states, covariance_type="diag",
+                                 n_iter=300, init_method="kmeans", random_state=42)
+            model.fit(features)
+            states = model.predict_hidden_states(features)
+
+            bt = backtest_regime_strategy(df, features, states)
+            ppy = periods_per_year_for(interval, tk)
+            strat = metric_summary(bt["strategy_returns"], ppy,
+                                   benchmark_returns=bt["benchmark_returns"])
+            strat["asset"] = tk.upper()
+            rows.append(strat)
+            print(f"  [{tk.upper()}] Sharpe={strat['sharpe']:.2f} "
+                  f"MaxDD={strat['max_drawdown']:.1%} "
+                  f"Return={strat['total_return']:.1%}")
+        except Exception as exc:  # noqa: BLE001 - keep going across assets
+            print(f"  [{tk.upper()}] skipped: {exc}")
+
+    if not rows:
+        return pd.DataFrame()
+    cmp = pd.DataFrame(rows).set_index("asset")
+    print("\n=== Multi-asset strategy comparison ===")
+    with pd.option_context("display.float_format", lambda v: f"{v:.4f}"):
+        print(cmp)
+    return cmp
 
 
 def _parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="HMM market regime detection (Phase 1).")
-    p.add_argument("--ticker", default="BTC-USD")
+    p.add_argument("--ticker", default="BTC-USD",
+                   help="Single asset, or use --tickers for several.")
+    p.add_argument("--tickers", default=None,
+                   help="Comma-separated list, e.g. BTC,ETH,GOLD for multi-asset.")
     p.add_argument("--n-states", type=int, default=7)
     p.add_argument("--period", default="730d")
     p.add_argument("--interval", default="1h")
@@ -213,5 +305,10 @@ def _parse_args() -> argparse.Namespace:
 
 if __name__ == "__main__":
     args = _parse_args()
-    run(ticker=args.ticker, n_states=args.n_states,
-        period=args.period, interval=args.interval)
+    if args.tickers:
+        tickers = [t.strip() for t in args.tickers.split(",") if t.strip()]
+        run_multi(tickers, n_states=args.n_states,
+                  period=args.period, interval=args.interval)
+    else:
+        run(ticker=args.ticker, n_states=args.n_states,
+            period=args.period, interval=args.interval)
