@@ -1,0 +1,61 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body {
+  background-color: theme("colors.ink.950");
+  color: theme("colors.ink.100");
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Ambient radial wash used behind the login + denied screens. */
+.bg-radial-fade {
+  background:
+    radial-gradient(60% 70% at 50% 0%, rgba(94, 230, 199, 0.06), transparent 70%),
+    theme("colors.ink.950");
+}
+
+@layer components {
+  .panel {
+    @apply rounded-panel border border-ink-600 bg-ink-850;
+  }
+
+  .label-mono {
+    @apply font-mono text-[11px] uppercase tracking-label text-ink-400;
+  }
+
+  .stat-figure {
+    @apply font-mono tabular-nums text-ink-100;
+  }
+
+  .pill {
+    @apply inline-flex items-center rounded-full px-4 py-2 text-sm font-medium transition-colors;
+  }
+  .pill-primary {
+    @apply bg-signal text-ink-950 hover:bg-[#7CEFD6];
+  }
+  .pill-ghost {
+    @apply border border-ink-600 text-ink-200 hover:border-ink-500 hover:text-ink-100;
+  }
+
+  /* Hairline divider that reads as a measured rule, not decoration. */
+  .rule {
+    @apply h-px w-full bg-ink-600;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
