@@ -25,7 +25,7 @@ export default function RegimeView({ data }: { data: RegimeData }) {
   );
 }
 
-/* ── Current regime ───────────────────────────────────────────────── */
+/* ── Current regime ──────────────────────────────────────────────── */
 
 function Hero({ data, curHue }: { data: RegimeData; curHue: string }) {
   const conf = Math.round(data.current.confidence * 100);
@@ -57,7 +57,9 @@ function Hero({ data, curHue }: { data: RegimeData; curHue: string }) {
 
         <div className="text-right">
           <div className="label-mono">{data.ticker} · {data.interval}</div>
-          <div className="mt-1 text-xs text-ink-500">updated {updated}</div>
+          <div className="mt-1 text-xs text-ink-500">
+            {data.exchange} · updated {updated}
+          </div>
           <div className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-ink-600 px-2.5 py-1">
             <span
               className="h-1.5 w-1.5 rounded-full bg-signal animate-pulse-soft"
