@@ -1,5 +1,5 @@
-// Shape of data/regime.json (emitted by scripts/export_regime.py). Keep this in
-// sync with that script's `payload` dict.
+// Shape of data/regimes.json payloads (emitted by scripts/export_regime.py).
+// Keep this in sync with that script.
 
 export interface StateMeta {
   id: number; // raw HMM state id (Viterbi label)
@@ -22,9 +22,10 @@ export interface ForecastStep {
 export interface RegimeData {
   schemaVersion: string;
   generatedAt: string; // ISO 8601
-  ticker: string;
+  ticker: string; // display label, e.g. "BTC perp"
+  source: "spot" | "perp";
+  exchange: string; // "Yahoo Finance" for spot, ccxt id for perp
   interval: string; // e.g. "1h"
-  lookbackDays: number;
   nComponents: number;
   refit: boolean; // true = model re-fit this run, false = saved model decoded
   // Down-sampled series for the ribbon (newest last). All same length.
@@ -43,6 +44,37 @@ export interface RegimeData {
   };
   stateMeta: StateMeta[]; // one per raw state id, index === id
   transitionMatrix: number[][]; // row i -> P(next = j)
+}
+
+// data/regimes.json — the bundle the dashboard loads. One payload per
+// asset×source combo, switched client-side.
+export interface AssetMeta {
+  key: string; // "BTC"
+  label: string; // "Bitcoin"
+}
+
+export interface ComboMeta {
+  id: string; // "BTC:spot"
+  asset: string; // "BTC"
+  source: "spot" | "perp";
+}
+
+export interface RegimeBundle {
+  schemaVersion: string;
+  generatedAt: string;
+  exchange: string; // perp exchange used this run
+  interval: string;
+  assets: AssetMeta[];
+  combos: ComboMeta[];
+  payloads: Record<string, RegimeData>; // keyed by combo id "BTC:spot"
+}
+
+export function comboId(asset: string, source: string): string {
+  return `${asset}:${source}`;
+}
+
+export function sourcesForAsset(bundle: RegimeBundle, asset: string): ("spot" | "perp")[] {
+  return bundle.combos.filter((c) => c.asset === asset).map((c) => c.source);
 }
 
 export function metaById(data: RegimeData, id: number): StateMeta | undefined {

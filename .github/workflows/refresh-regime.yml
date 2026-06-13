@@ -33,16 +33,14 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Export regime data
-        run: |
-          python scripts/export_regime.py \
-            ${{ (github.event_name == 'workflow_dispatch' && inputs.refit) && '--refit' || '' }}
+        run: python scripts/export_regime.py
 
       - name: Commit if changed
         run: |
           git config user.name  "regime-bot"
           git config user.email "actions@github.com"
-          if ! git diff --quiet -- web/data/regime.json; then
-            git add web/data/regime.json
+          if ! git diff --quiet -- web/data/regimes.json; then
+            git add web/data/regimes.json
             git commit -m "chore(data): refresh regime snapshot [skip ci]"
             git push
           else
