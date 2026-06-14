@@ -4,6 +4,7 @@ __pycache__/
 *.egg-info/
 .venv/
 venv/
+venv313/
 env/
 
 # OS / editor
@@ -14,3 +15,7 @@ env/
 # Notes:
 # model_params.json / btc_regime_model.json are committed intentionally as
 # example serialized models. Regenerate large/private models out-of-tree.
+
+
+# Streamlit secrets - never commit these (Discord OAuth credentials, etc.)
+.streamlit/secrets.toml

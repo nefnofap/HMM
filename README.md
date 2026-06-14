@@ -56,3 +56,33 @@ reloaded = HMMPredictor.load("model.json")  # reconstructs in milliseconds, no r
 - HMM parameters are only locally stationary in markets — re-fit on rolling windows.
 
 > For research/simulation. Keep any live trading behind your own broker keys and risk controls.
+
+
+
+## Discord login (members-only access)
+
+The dashboard supports an **optional Discord OAuth gate** so only members of
+your Discord server can use the site. If credentials are not configured, the
+gate is skipped (great for local development).
+
+### Configure (one time)
+
+1. Create an app at <https://discord.com/developers/applications>.
+2. In **OAuth2 -> Redirects**, add your hosted URL exactly
+   (e.g. `https://nefnofap-hmm.streamlit.app`).
+3. Copy the **Client ID** and **Client Secret**.
+4. In Discord enable **Developer Mode** (User Settings -> Advanced),
+   right-click your server icon -> **Copy Server ID**.
+5. Locally, copy `.streamlit/secrets.toml.example` to
+   `.streamlit/secrets.toml` and fill in the values. On Streamlit Community
+   Cloud, paste them into the app's **Secrets** panel.
+
+### How it works
+- User clicks **Login with Discord**.
+- Discord redirects back with a code; we exchange it for an access token.
+- We call `/users/@me/guilds` and check if your server's ID is in the list.
+- If yes, they get in; if no, they see a "Join the server" screen.
+- The session is cached in Streamlit's `session_state` for the visit.
+
+> Without secrets, the gate is automatically disabled so the site runs free.
+> With secrets, only members get in &mdash; verified via Discord's API, no manual list.
