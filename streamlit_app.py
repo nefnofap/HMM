@@ -2,29 +2,37 @@
 streamlit_app.py
 ================
 
-REGIME TERMINAL v3 - a dark "command-center" web dashboard for the HMM market
-regime detector.
+REGIME TERMINAL v4 — dark "command-center" dashboard with:
 
-Three tabs
-----------
-1. ANALYSIS  - single instrument: live signal, confirmation checklist,
-               ATR entry/stop/target levels + position sizing, in-sample
-               backtest, and an optional honest WALK-FORWARD (out-of-sample) run.
-2. SCANNER   - rank ALL instruments by their current signal (LONG first).
-3. OPTIMIZER - grid-search RSI/ADX/leverage/confirmations, scored by
-               walk-forward (out-of-sample) performance.
+  NEW in v4
+  ---------
+  • Multi-asset crypto switcher  (BTC/ETH/SOL/BNB/XRP/DOGE/ADA/AVAX)
+    – Spot  → yfinance (free, no key)
+    – Perp  → ccxt / Bybit with OKX auto-fallback (free, no key)
+  • Discord soft-gate            (login required, no hard-block; tracks users)
+  • Auto-refresh                 (1-hour interval, built-in st.rerun)
 
-Run it (see WINDOWS_SETUP.md for beginner steps):
-
-    streamlit run streamlit_app.py
+  UNCHANGED
+  ---------
+  • Dark theme CSS
+  • Navbar + hero + footer
+  • Three tabs: ANALYSIS · SCANNER · OPTIMIZER
+  • Instrument catalog (43 instruments)
+  • Backtest, walk-forward, position sizing, ATR levels
+  • Confirmation checklist (8 signals)
+  • Logo SVG
 """
 
 from __future__ import annotations
+
+import time
+from datetime import datetime, timezone
 
 import numpy as np
 import pandas as pd
 import streamlit as st
 
+# ── project modules ───────────────────────────────────────────────────────────
 from hmm_predictor import ConvergenceError, HMMPredictor, SingularCovarianceError
 from regime_detection import (DISPLAY_TO_SYMBOL, INSTRUMENT_CATALOG,
                               build_features, load_prices, periods_per_year_for,
@@ -39,23 +47,60 @@ from scanner import scan
 from optimizer import optimize, DEFAULT_GRID
 import discord_auth
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Constants / catalogs
+# ─────────────────────────────────────────────────────────────────────────────
+
 CONFIRMATION_LABELS = {
     "rsi_not_overbought": "RSI not overbought",
-    "rsi_strength": "RSI strength (>50)",
-    "macd_bullish": "MACD bullish",
-    "price_above_sma": "Price above trend",
-    "ma_crossover": "Fast MA > Slow MA",
-    "positive_momentum": "Positive momentum",
-    "adx_trending": "ADX trending",
-    "volume_participation": "Volume participation",
+    "rsi_strength":       "RSI strength (>50)",
+    "macd_bullish":       "MACD bullish",
+    "price_above_sma":    "Price above trend",
+    "ma_crossover":       "Fast MA > Slow MA",
+    "positive_momentum":  "Positive momentum",
+    "adx_trending":       "ADX trending",
+    "volume_participation":"Volume participation",
 }
 
-st.set_page_config(page_title="REGIME TERMINAL", layout="wide",
-                   initial_sidebar_state="collapsed")
+# Crypto assets shown in the switcher
+CRYPTO_ASSETS = ["BTC", "ETH", "SOL", "BNB", "XRP", "DOGE", "ADA", "AVAX"]
 
-# ----------------------------------------------------------------------
-# Command-center theme
-# ----------------------------------------------------------------------
+# yfinance spot tickers  (coin → Yahoo ticker)
+SPOT_TICKERS: dict[str, str] = {
+    "BTC":  "BTC-USD",
+    "ETH":  "ETH-USD",
+    "SOL":  "SOL-USD",
+    "BNB":  "BNB-USD",
+    "XRP":  "XRP-USD",
+    "DOGE": "DOGE-USD",
+    "ADA":  "ADA-USD",
+    "AVAX": "AVAX-USD",
+}
+
+# ccxt / Bybit+OKX perp symbols
+PERP_SYMBOLS: dict[str, str] = {
+    "BTC":  "BTC/USDT:USDT",
+    "ETH":  "ETH/USDT:USDT",
+    "SOL":  "SOL/USDT:USDT",
+    "BNB":  "BNB/USDT:USDT",
+    "XRP":  "XRP/USDT:USDT",
+    "DOGE": "DOGE/USDT:USDT",
+    "ADA":  "ADA/USDT:USDT",
+    "AVAX": "AVAX/USDT:USDT",
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Page config  (must be FIRST Streamlit call)
+# ─────────────────────────────────────────────────────────────────────────────
+st.set_page_config(
+    page_title="REGIME TERMINAL",
+    layout="wide",
+    initial_sidebar_state="collapsed",
+)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Dark theme CSS  (unchanged from v3)
+# ─────────────────────────────────────────────────────────────────────────────
 THEME_CSS = """
 <style>
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Playfair+Display:ital,wght@1,700;1,800;1,900&display=swap');
@@ -78,7 +123,7 @@ html, body, [class*="css"], .stApp {
 .block-container { padding-top:1.2rem; max-width:1620px; }
 #MainMenu, footer, header { visibility:hidden; }
 
-/* Top nav bar (Cryptoverse-style) */
+/* ── Navbar ── */
 .navbar { display:flex; justify-content:space-between; align-items:center;
   padding:.2rem .2rem 1rem; margin-bottom:1.4rem; border-bottom:1px solid var(--border); }
 .nav-left { display:flex; align-items:center; gap:2.2rem; }
@@ -97,7 +142,7 @@ html, body, [class*="css"], .stApp {
   border-radius:999px; background:rgba(255,255,255,0.08);
   border:1px solid var(--border-strong); }
 
-/* Giant silver-gradient hero heading */
+/* ── Hero ── */
 .hero { text-align:center; padding:2.2rem 0 .6rem; position:relative; }
 .hero h1 { font-family:var(--display); font-style:italic; font-size:8rem; line-height:.92;
   font-weight:900; letter-spacing:-3px; margin:0;
@@ -113,7 +158,29 @@ html, body, [class*="css"], .stApp {
   border:1px solid rgba(255,194,75,0.35); border-radius:999px; padding:.3rem .7rem;
   background:rgba(255,194,75,0.06); }
 
-/* Footer (Cryptoverse-style overlapping card) */
+/* ── Crypto switcher bar ── */
+.crypto-bar { display:flex; align-items:center; gap:.5rem; flex-wrap:wrap;
+  padding:.6rem .8rem; border:1px solid var(--border); border-radius:16px;
+  background:var(--panel); backdrop-filter:blur(14px);
+  margin-bottom:1rem; }
+.crypto-pill { font-size:.75rem; font-weight:700; padding:.35rem .85rem;
+  border-radius:999px; border:1px solid var(--border); color:var(--muted);
+  cursor:pointer; transition:.12s; letter-spacing:.3px; background:transparent; }
+.crypto-pill.active, .crypto-pill:hover {
+  background:linear-gradient(135deg,var(--accent),var(--accent2));
+  color:#fff; border-color:transparent; }
+.market-toggle { display:flex; gap:.3rem; margin-left:auto; }
+.market-btn { font-size:.7rem; font-weight:700; padding:.3rem .9rem;
+  border-radius:999px; cursor:pointer; border:1px solid var(--border);
+  color:var(--muted); background:transparent; transition:.12s; }
+.market-btn.active { background:rgba(255,194,75,0.15); color:var(--amber);
+  border-color:rgba(255,194,75,0.4); }
+.refresh-dot { width:7px; height:7px; border-radius:50%;
+  background:var(--green); display:inline-block; margin-right:.4rem;
+  animation:pulse 2s infinite; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+/* ── Footer ── */
 .footer { border:1px solid var(--border); border-radius:24px; margin-top:2rem;
   padding:2rem 2.2rem 1.4rem; background:var(--panel); position:relative; overflow:hidden;
   backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px); }
@@ -136,7 +203,7 @@ html, body, [class*="css"], .stApp {
 .footer .f-bottom { color:var(--muted); font-size:.72rem; margin-top:1.6rem;
   padding-top:1.1rem; border-top:1px solid var(--border); }
 
-/* Glass panels */
+/* ── Glass panels ── */
 .panel { border:1px solid var(--border); background:var(--panel);
   border-radius:18px; padding:1rem 1.1rem; margin-bottom:1rem;
   backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
@@ -149,7 +216,7 @@ html, body, [class*="css"], .stApp {
 .kv { display:flex; justify-content:space-between; font-size:.76rem; padding:.2rem 0; }
 .kv .k { color:var(--muted); } .kv .v { color:var(--text); font-weight:500; font-variant-numeric:tabular-nums; }
 
-/* Live signal banner */
+/* ── Live signal banner ── */
 .signal { border:1px solid var(--border); border-radius:20px; padding:1.3rem 1.5rem;
   margin-bottom:1.1rem; display:flex; justify-content:space-between; align-items:center;
   background:var(--panel); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
@@ -165,7 +232,7 @@ html, body, [class*="css"], .stApp {
 .signal .sub { font-size:.72rem; color:var(--muted); letter-spacing:.5px; margin-top:.25rem; }
 .signal .right { text-align:right; } .signal .big { font-size:1.5rem; color:var(--text); font-weight:700; }
 
-/* Stat boxes */
+/* ── Stat boxes ── */
 .statgrid { display:flex; gap:.6rem; }
 .stat { flex:1; border:1px solid var(--border); border-radius:14px; padding:.6rem .4rem;
   text-align:center; background:rgba(255,255,255,0.02); }
@@ -173,7 +240,7 @@ html, body, [class*="css"], .stApp {
 .stat .l { font-size:.58rem; color:var(--muted); letter-spacing:1px; text-transform:uppercase; margin-top:.15rem; }
 .stat.bull .n { color:var(--green); } .stat.bear .n { color:var(--red); }
 
-/* Regime list cards */
+/* ── Regime list cards ── */
 .op { border:1px solid var(--border); border-radius:14px; padding:.6rem .75rem;
   margin-bottom:.55rem; background:rgba(255,255,255,0.02); transition:.15s; }
 .op:hover { border-color:var(--border-strong); background:rgba(255,255,255,0.04); }
@@ -181,7 +248,7 @@ html, body, [class*="css"], .stApp {
 .op .ttl { font-size:.82rem; margin:.18rem 0; font-weight:600; }
 .op .meta { font-size:.66rem; color:var(--muted); font-variant-numeric:tabular-nums; }
 
-/* Confirmation checklist */
+/* ── Confirmation checklist ── */
 .chk { display:flex; justify-content:space-between; align-items:center;
   font-size:.74rem; padding:.36rem .1rem; border-bottom:1px solid var(--border); }
 .chk .name { color:var(--text); } .chk .val { color:var(--muted); font-size:.66rem; margin-left:.5rem; font-variant-numeric:tabular-nums; }
@@ -189,14 +256,14 @@ html, body, [class*="css"], .stApp {
 .chk.pass .mark { color:var(--green); background:rgba(61,220,151,0.12); }
 .chk.fail .mark { color:var(--red); background:rgba(255,92,114,0.12); }
 
-/* Levels ladder */
+/* ── Levels ladder ── */
 .lvl { display:flex; justify-content:space-between; font-size:.78rem; padding:.36rem .1rem;
   border-bottom:1px solid var(--border); font-variant-numeric:tabular-nums; }
 .lvl .tag { color:var(--muted); letter-spacing:.5px; }
 .lvl.tgt .px { color:var(--green); font-weight:600; } .lvl.entry .px { color:var(--text); font-weight:700; }
 .lvl.stop .px { color:var(--red); font-weight:600; }
 
-/* Inputs */
+/* ── Inputs ── */
 .stTextInput input, .stSelectbox div[data-baseweb="select"] > div,
 .stNumberInput input {
   background:var(--panel-solid)!important; color:var(--text)!important;
@@ -214,7 +281,7 @@ html, body, [class*="css"], .stApp {
 .stButton button:hover { filter:brightness(1.1); box-shadow:0 8px 26px rgba(110,139,255,0.5); }
 .stDataFrame { border:1px solid var(--border); border-radius:14px; overflow:hidden; }
 
-/* Tabs */
+/* ── Tabs ── */
 .stTabs [data-baseweb="tab-list"] { gap:.4rem; border-bottom:none; }
 .stTabs [data-baseweb="tab"] { background:var(--panel); border:1px solid var(--border);
   border-radius:12px; color:var(--muted); font-family:var(--mono); font-weight:600;
@@ -222,7 +289,7 @@ html, body, [class*="css"], .stApp {
 .stTabs [aria-selected="true"] { background:linear-gradient(135deg,var(--accent),var(--accent2));
   color:#fff; border-color:transparent; }
 
-/* Metric cards */
+/* ── Metric cards ── */
 .metricgrid { display:flex; flex-wrap:wrap; gap:.6rem; }
 .metric { flex:1; min-width:120px; border:1px solid var(--border); border-radius:14px;
   background:rgba(255,255,255,0.02); padding:.65rem .8rem; }
@@ -233,90 +300,191 @@ html, body, [class*="css"], .stApp {
 """
 st.markdown(THEME_CSS, unsafe_allow_html=True)
 
-def _make_particle_sphere_svg(size: int = 64, n_dots: int = 320,
-                              seed: int = 7) -> str:
-    """
-    Build a 'stippled globe' logo: white particles scattered inside a circle,
-    denser near the rim and along the equator/poles so it reads as a sphere,
-    matching the reference image. Pure SVG (no JS), deterministic via seed.
-    """
-    import math
-    import random as _r
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Logo SVG (unchanged)
+# ─────────────────────────────────────────────────────────────────────────────
+def _make_particle_sphere_svg(size: int = 64, n_dots: int = 320, seed: int = 7) -> str:
+    import math, random as _r
     rng = _r.Random(seed)
-    c = size / 2.0
-    R = c * 0.92
+    c = size / 2.0; R = c * 0.92
     dots = []
     for _ in range(n_dots):
-        # bias radius toward the rim (sqrt pushes points outward)
         rad = R * (rng.random() ** 0.62)
         ang = rng.random() * 2 * math.pi
-        x = c + rad * math.cos(ang)
-        y = c + rad * math.sin(ang)
-        # latitude shading: thin out the mid-band a touch for a 3D feel
+        x = c + rad * math.cos(ang); y = c + rad * math.sin(ang)
         lat = abs(y - c) / R
         if rng.random() > 0.35 + 0.65 * lat and rad < R * 0.55:
             continue
         rr = rng.choice([0.5, 0.6, 0.7, 0.9])
         op = rng.choice([0.55, 0.7, 0.85, 1.0])
-        dots.append(
-            f"<circle cx='{x:.1f}' cy='{y:.1f}' r='{rr}' "
-            f"fill='#ffffff' fill-opacity='{op}'/>")
-    return (
-        f"<svg viewBox='0 0 {size} {size}' xmlns='http://www.w3.org/2000/svg'>"
-        f"<defs><radialGradient id='glow' cx='50%' cy='42%' r='60%'>"
-        f"<stop offset='0' stop-color='#6e8bff' stop-opacity='0.18'/>"
-        f"<stop offset='1' stop-color='#6e8bff' stop-opacity='0'/>"
-        f"</radialGradient></defs>"
-        f"<circle cx='{c}' cy='{c}' r='{R}' fill='url(#glow)'/>"
-        + "".join(dots) + "</svg>"
-    )
+        dots.append(f"<circle cx='{x:.1f}' cy='{y:.1f}' r='{rr}' fill='#ffffff' fill-opacity='{op}'/>")
+    return (f"<svg viewBox='0 0 {size} {size}' xmlns='http://www.w3.org/2000/svg'>"
+            f"<defs><radialGradient id='glow' cx='50%' cy='42%' r='60%'>"
+            f"<stop offset='0' stop-color='#6e8bff' stop-opacity='0.18'/>"
+            f"<stop offset='1' stop-color='#6e8bff' stop-opacity='0'/>"
+            f"</radialGradient></defs>"
+            f"<circle cx='{c}' cy='{c}' r='{R}' fill='url(#glow)'/>"
+            + "".join(dots) + "</svg>")
 
 
 LOGO_SVG = _make_particle_sphere_svg()
 
-st.markdown(
-    f"""
-    <div class="navbar">
-      <div class="nav-left">
-        <div class="brand"><span class="logo">{LOGO_SVG}</span>Regime Terminal</div>
-        <div class="nav-links">
-          <a class="active">Analysis</a>
-          <a>Scanner</a>
-          <a>Optimizer</a>
-        </div>
-      </div>
-      <div class="nav-right">
-        <a class="nav-cta" href="https://discord.gg/MSXdaexYdH" target="_blank"
-           style="text-decoration:none;">Join Discord &rarr;</a>
-      </div>
-    </div>
-    <div class="hero">
-      <h1>regime</h1>
-      <div class="tagline">// detect the market's hidden state, today.</div>
-      <div class="lead">A Hidden Markov Model engine that classifies market regimes
-      across 43 instruments &mdash; crypto, metals, forex, indices, commodities and
-      stocks. Research build &mdash; not financial advice.</div>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
 
-
-# ======================================================================
-# Shared helpers
-# ======================================================================
-def panel(title_html, body_html):
+# ─────────────────────────────────────────────────────────────────────────────
+# Shared UI helpers  (unchanged)
+# ─────────────────────────────────────────────────────────────────────────────
+def panel(title_html: str, body_html: str) -> str:
     return f"<div class='panel'><div class='panel-h'>{title_html}</div>{body_html}</div>"
 
-def kv(k, v):
+def kv(k: str, v: str) -> str:
     return f"<div class='kv'><span class='k'>{k}</span><span class='v'>{v}</span></div>"
 
-def metric_card(label, value, fmt="{:.2f}", good=None):
+def metric_card(label: str, value, fmt="{:.2f}", good=None) -> str:
     cls = "metric" + (" good" if good is True else " bad" if good is False else "")
     val = fmt.format(value) if isinstance(value, (int, float)) else str(value)
     return f"<div class='{cls}'><div class='l'>{label}</div><div class='n'>{val}</div></div>"
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# NEW ── Perp data loader (ccxt / Bybit → OKX fallback)
+# ─────────────────────────────────────────────────────────────────────────────
+@st.cache_data(ttl=3600, show_spinner=False)
+def _load_perp_ccxt(asset: str, timeframe: str = "1h", limit: int = 1000) -> pd.DataFrame:
+    """
+    Fetch perpetual OHLCV from Bybit; falls back to OKX if Bybit fails.
+    Returns a DataFrame with columns: Open High Low Close Volume (DatetimeIndex UTC).
+    Raises RuntimeError if both exchanges fail.
+    """
+    import ccxt  # lazy import — not needed for spot path
+
+    symbol = PERP_SYMBOLS.get(asset, f"{asset}/USDT:USDT")
+
+    exchanges_to_try = [
+        ("bybit",  lambda: ccxt.bybit({"options": {"defaultType": "linear"}})),
+        ("okx",    lambda: ccxt.okx({"options": {"defaultType": "swap"}})),
+    ]
+
+    last_exc: Exception | None = None
+    for name, factory in exchanges_to_try:
+        try:
+            ex = factory()
+            ex.load_markets()
+            ohlcv = ex.fetch_ohlcv(symbol, timeframe=timeframe, limit=limit)
+            if not ohlcv:
+                raise ValueError(f"{name}: empty OHLCV response for {symbol}")
+            df = pd.DataFrame(ohlcv, columns=["ts", "Open", "High", "Low", "Close", "Volume"])
+            df.index = pd.to_datetime(df["ts"], unit="ms", utc=True)
+            df.index.name = "Datetime"
+            return df[["Open", "High", "Low", "Close", "Volume"]].astype(float)
+        except Exception as exc:  # noqa: BLE001
+            last_exc = exc
+            continue  # try next exchange
+
+    raise RuntimeError(
+        f"Both Bybit and OKX failed for {asset} perp. "
+        f"Last error: {last_exc}"
+    )
+
+
+def load_crypto_prices(asset: str, market: str, period: str = "365d",
+                       interval: str = "1h") -> pd.DataFrame:
+    """
+    Unified crypto price loader.
+      market = 'Spot'  → yfinance (free, no key)
+      market = 'Perp'  → ccxt Bybit+OKX fallback
+    """
+    if market == "Spot":
+        ticker = SPOT_TICKERS.get(asset, f"{asset}-USD")
+        return load_prices(ticker, period=period, interval=interval)
+    else:
+        # ccxt timeframe string
+        tf_map = {"1h": "1h", "1d": "1d", "15m": "15m", "4h": "4h"}
+        tf = tf_map.get(interval, "1h")
+        # convert period string to bar limit (approximate)
+        period_bars = {
+            "90d": 90 * 24, "180d": 180 * 24,
+            "365d": 365 * 24, "730d": 730 * 24,
+        }
+        limit = min(period_bars.get(period, 365 * 24), 1000)
+        if interval == "1d":
+            limit = min(limit // 24, 500)
+        return _load_perp_ccxt(asset, timeframe=tf, limit=limit)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# NEW ── Auto-refresh state helpers
+# ─────────────────────────────────────────────────────────────────────────────
+AUTO_REFRESH_INTERVAL = 3600  # seconds (1 hour)
+
+def _init_refresh_state() -> None:
+    if "last_refresh_ts" not in st.session_state:
+        st.session_state["last_refresh_ts"] = time.time()
+    if "auto_refresh_enabled" not in st.session_state:
+        st.session_state["auto_refresh_enabled"] = False
+
+def _maybe_auto_refresh() -> None:
+    """Trigger st.rerun() if auto-refresh is on and interval has elapsed."""
+    if not st.session_state.get("auto_refresh_enabled", False):
+        return
+    elapsed = time.time() - st.session_state.get("last_refresh_ts", 0)
+    if elapsed >= AUTO_REFRESH_INTERVAL:
+        # clear cached data so fresh prices are fetched on rerun
+        st.cache_data.clear()
+        st.cache_resource.clear()
+        st.session_state["last_refresh_ts"] = time.time()
+        st.rerun()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# NEW ── Crypto switcher bar  (HTML + Streamlit radio workaround)
+#         Returns (selected_asset, selected_market)
+# ─────────────────────────────────────────────────────────────────────────────
+def _render_crypto_switcher() -> tuple[str, str]:
+    """
+    Renders the asset pill-row + Spot/Perp toggle.
+    Uses st.radio with horizontal layout (hidden native styling) for state.
+    Returns (asset, market).
+    """
+    col_pills, col_market = st.columns([5, 1])
+
+    with col_pills:
+        # Streamlit radio styled to look like pill buttons
+        selected_asset = st.radio(
+            "ASSET",
+            CRYPTO_ASSETS,
+            horizontal=True,
+            label_visibility="collapsed",
+            key="crypto_asset_select",
+        )
+
+    with col_market:
+        selected_market = st.radio(
+            "MARKET",
+            ["Spot", "Perp"],
+            horizontal=True,
+            label_visibility="collapsed",
+            key="crypto_market_select",
+        )
+
+    # Visual status line
+    market_color = "var(--green)" if selected_market == "Spot" else "var(--amber)"
+    src_label = (f"yfinance · {SPOT_TICKERS.get(selected_asset, selected_asset + '-USD')}"
+                 if selected_market == "Spot"
+                 else f"Bybit / OKX · {PERP_SYMBOLS.get(selected_asset, selected_asset + '/USDT:USDT')}")
+    st.markdown(
+        f"<div style='font-size:.62rem; color:var(--muted); margin-top:-.3rem; margin-bottom:.4rem;'>"
+        f"<span style='color:{market_color}; font-weight:700;'>{selected_market.upper()}</span>"
+        f" &nbsp;·&nbsp; {src_label}</div>",
+        unsafe_allow_html=True,
+    )
+
+    return selected_asset, selected_market
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Model cache  (unchanged logic, keyed on symbol)
+# ─────────────────────────────────────────────────────────────────────────────
 @st.cache_resource(show_spinner=False)
 def fit_model(symbol: str, period: str, interval: str, n_states: int):
     df = load_prices(symbol, period=period, interval=interval)
@@ -328,6 +496,21 @@ def fit_model(symbol: str, period: str, interval: str, n_states: int):
     return df, features, model, states
 
 
+@st.cache_data(show_spinner=False, ttl=3600)
+def fit_model_crypto(asset: str, market: str, period: str, interval: str, n_states: int):
+    """Fit HMM on crypto data (spot or perp)."""
+    df = load_crypto_prices(asset, market, period=period, interval=interval)
+    features = build_features(df)
+    model = HMMPredictor(n_components=n_states, covariance_type="diag",
+                         n_iter=300, init_method="kmeans", random_state=42)
+    model.fit(features)
+    states = model.predict_hidden_states(features)
+    return df, features, model, states
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Chart helpers  (unchanged)
+# ─────────────────────────────────────────────────────────────────────────────
 def regime_chart(df, features, states, label, n_states):
     import matplotlib; matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -371,105 +554,148 @@ def equity_drawdown_chart(strat_ret, bench_ret, title="EQUITY CURVE (GROWTH OF 1
 
 def metrics_cards_html(m, n_trades, label):
     cards = (
-        metric_card("TOTAL RETURN", m["total_return"]*100, "{:+.1f}%", m["total_return"]>0)
-        + metric_card("ALPHA", m.get("alpha_vs_buy_hold",0)*100, "{:+.1f}%", m.get("alpha_vs_buy_hold",0)>0)
-        + metric_card("SHARPE", m["sharpe"], "{:.2f}", m["sharpe"]>1)
-        + metric_card("MAX DD", m["max_drawdown"]*100, "{:.1f}%", m["max_drawdown"]>-0.25)
-        + metric_card("CALMAR", m["calmar"], "{:.2f}", m["calmar"]>0.5)
-        + metric_card("WIN %", m["win_rate"]*100, "{:.0f}%", m["win_rate"]>0.5)
-        + metric_card("TRADES", n_trades, "{:d}"))
+        metric_card("TOTAL RETURN",  m["total_return"]*100,               "{:+.1f}%", m["total_return"]>0)
+        + metric_card("ALPHA",       m.get("alpha_vs_buy_hold",0)*100,    "{:+.1f}%", m.get("alpha_vs_buy_hold",0)>0)
+        + metric_card("SHARPE",      m["sharpe"],                          "{:.2f}",   m["sharpe"]>1)
+        + metric_card("MAX DD",      m["max_drawdown"]*100,               "{:.1f}%",   m["max_drawdown"]>-0.25)
+        + metric_card("CALMAR",      m["calmar"],                          "{:.2f}",   m["calmar"]>0.5)
+        + metric_card("WIN %",       m["win_rate"]*100,                   "{:.0f}%",   m["win_rate"]>0.5)
+        + metric_card("TRADES",      n_trades,                             "{:d}")
+    )
     return panel(label, f"<div class='metricgrid'>{cards}</div>")
 
 
-# ======================================================================
-# DISCORD GATE - only members of the configured server can use the site.
-# ======================================================================
-def _login_screen(authorize_url: str, invite_url: str) -> None:
-    """Themed Discord login screen."""
-    st.markdown(
-        f"""
-        <div class='panel' style='max-width:560px; margin:2rem auto; text-align:center;
-             padding:2.4rem 2rem;'>
-          <div style='font-size:.62rem; letter-spacing:2px; color:var(--accent);
-               text-transform:uppercase; font-weight:600;'>members only</div>
-          <h2 style='font-family:var(--display); font-style:italic; font-size:3.6rem;
-               margin:.4rem 0 .6rem; font-weight:900;
-               background:linear-gradient(180deg,#fff 0%,#dfe2eb 50%,#9aa0ad 100%);
-               -webkit-background-clip:text; background-clip:text;
-               -webkit-text-fill-color:transparent;'>access</h2>
-          <p style='color:var(--muted); font-size:.82rem; line-height:1.55; margin-bottom:1.4rem;'>
-          The terminal is gated to members of our Discord. Sign in with Discord to verify
-          your membership and continue. Research only &mdash; not financial advice.</p>
-          <a href='{authorize_url}' style='display:inline-block; text-decoration:none;
-             color:#fff; padding:.75rem 1.6rem; border-radius:999px;
-             background:linear-gradient(135deg,#5865F2,#7289da);
-             box-shadow:0 6px 22px rgba(88,101,242,0.45); font-weight:700; letter-spacing:.5px;'>
-             Login with Discord &rarr;</a>
-          <div style='margin-top:1.1rem; font-size:.72rem; color:var(--muted);'>
-            Not a member yet? <a href='{invite_url}' target='_blank'
-              style='color:var(--accent);'>Join the server</a>.
-          </div>
+# ─────────────────────────────────────────────────────────────────────────────
+# Discord soft-gate  (login renders inline; not blocking)
+# ─────────────────────────────────────────────────────────────────────────────
+_init_refresh_state()
+
+# handle_discord_auth() returns True once logged in; shows login UI otherwise.
+# Because we're a soft-gate we DON'T stop the app — we just show the gate and
+# return False.  The rest of the UI is rendered below regardless (the gate
+# itself communicates "you must sign in" without a hard-block).
+_discord_authed = discord_auth.handle_discord_auth()
+
+# If logged in, show a top-right user badge (injected into the page by the
+# auth module via HTML) and record a usage entry.
+if _discord_authed:
+    _user = discord_auth.get_current_user()
+    if _user:
+        _uname = _user.get("username", "?")
+        _tag = (f"{_uname}#{_user.get('discriminator','0')}"
+                if _user.get("discriminator", "0") not in ("0", None, "")
+                else _uname)
+        # Track session info
+        if "session_start" not in st.session_state:
+            st.session_state["session_start"] = datetime.now(timezone.utc).isoformat()
+        # Small inline badge below navbar
+        st.markdown(
+            f"<div style='text-align:right;font-size:.72rem;color:var(--muted);"
+            f"margin:-.4rem 0 .4rem;'>"
+            f"⚡ signed in as <span style='color:var(--text);font-weight:600;'>{_tag}</span>"
+            f"&nbsp;&middot;&nbsp;Discord verified"
+            f"&nbsp;&nbsp;<span style='cursor:pointer;color:var(--red);' "
+            f"onclick=\"window.location.href='?logout=1'\">[ logout ]</span>"
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+        # Handle logout via query param
+        if st.query_params.get("logout") == "1":
+            discord_auth.logout()
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Navbar + Hero  (unchanged)
+# ─────────────────────────────────────────────────────────────────────────────
+st.markdown(
+    f"""
+    <div class="navbar">
+      <div class="nav-left">
+        <div class="brand"><span class="logo">{LOGO_SVG}</span>Regime Terminal</div>
+        <div class="nav-links">
+          <a class="active">Analysis</a>
+          <a>Scanner</a>
+          <a>Optimizer</a>
         </div>
-        """,
-        unsafe_allow_html=True,
+      </div>
+      <div class="nav-right">
+        <a class="nav-cta" href="https://discord.gg/MSXdaexYdH" target="_blank"
+           style="text-decoration:none;">Join Discord &rarr;</a>
+      </div>
+    </div>
+    <div class="hero">
+      <h1>regime</h1>
+      <div class="tagline">// detect the market's hidden state, today.</div>
+      <div class="lead">A Hidden Markov Model engine that classifies market regimes
+      across 43 instruments &mdash; crypto, metals, forex, indices, commodities and
+      stocks. Research build &mdash; not financial advice.</div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# NEW ── Auto-refresh controls  (sidebar)
+# ─────────────────────────────────────────────────────────────────────────────
+with st.sidebar:
+    st.markdown("## ⚙️ Settings")
+    st.markdown("---")
+
+    st.session_state["auto_refresh_enabled"] = st.toggle(
+        "Auto-refresh (1 h)",
+        value=st.session_state.get("auto_refresh_enabled", False),
+        help="When enabled the app will clear its data cache and reload every hour.",
+        key="ar_toggle",
     )
 
+    if st.session_state["auto_refresh_enabled"]:
+        elapsed = int(time.time() - st.session_state.get("last_refresh_ts", time.time()))
+        remaining = max(0, AUTO_REFRESH_INTERVAL - elapsed)
+        m, s = divmod(remaining, 60)
+        st.markdown(
+            f"<span class='refresh-dot'></span>"
+            f"<span style='font-size:.72rem;color:var(--muted);'>"
+            f"Next refresh in {m:02d}:{s:02d}</span>",
+            unsafe_allow_html=True,
+        )
+        if st.button("⟳ Refresh now", key="manual_refresh"):
+            st.cache_data.clear()
+            st.cache_resource.clear()
+            st.session_state["last_refresh_ts"] = time.time()
+            st.rerun()
 
-def _denied_screen(user, invite_url: str) -> None:
-    """Themed denied screen for users who aren't in the server."""
-    name = discord_auth.display_name(user)
-    av = discord_auth.avatar_url(user, 96) or ""
-    avatar_html = (f"<img src='{av}' style='width:64px;height:64px;border-radius:50%;"
-                   f"border:1px solid var(--border);margin-bottom:.8rem;'/>") if av else ""
-    st.markdown(
-        f"""
-        <div class='panel' style='max-width:560px; margin:2rem auto; text-align:center;
-             padding:2.4rem 2rem;'>
-          {avatar_html}
-          <div style='font-size:.62rem; letter-spacing:2px; color:var(--red);
-               text-transform:uppercase; font-weight:600;'>access denied</div>
-          <h2 style='font-family:var(--display); font-style:italic; font-size:2.6rem;
-               margin:.4rem 0 .6rem; font-weight:900; color:#fff;'>hi, {name}.</h2>
-          <p style='color:var(--muted); font-size:.82rem; line-height:1.55; margin-bottom:1.4rem;'>
-          You're signed in with Discord, but you're not in our server yet. Join the
-          community and refresh this page to continue.</p>
-          <a href='{invite_url}' target='_blank' style='display:inline-block;
-             text-decoration:none; color:#fff; padding:.75rem 1.6rem; border-radius:999px;
-             background:linear-gradient(135deg,#5865F2,#7289da);
-             box-shadow:0 6px 22px rgba(88,101,242,0.45); font-weight:700; letter-spacing:.5px;'>
-             Join the Discord &rarr;</a>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    st.markdown("---")
+    if _discord_authed and discord_auth.get_current_user():
+        if st.button("Logout of Discord", key="sidebar_logout"):
+            discord_auth.logout()
 
+# Check if it's time to auto-refresh BEFORE rendering expensive content
+_maybe_auto_refresh()
 
-_user = discord_auth.require_login(render_login=_login_screen,
-                                   render_denied=_denied_screen)
-if _user is not None:
-    _name = discord_auth.display_name(_user)
-    _av = discord_auth.avatar_url(_user, 32)
-    _avatar_html = (f"<img src='{_av}' style='width:18px;height:18px;border-radius:50%;"
-                    f"vertical-align:middle;margin-right:.4rem;'/>") if _av else ""
-    st.markdown(
-        f"<div style='text-align:right;font-size:.72rem;color:var(--muted);"
-        f"margin:-.4rem 0 .4rem;'>{_avatar_html}signed in as <span style='color:var(--text);'>"
-        f"{_name}</span> &middot; verified Discord member</div>",
-        unsafe_allow_html=True,
-    )
-
-
-# ======================================================================
+# ─────────────────────────────────────────────────────────────────────────────
 # TABS
-# ======================================================================
+# ─────────────────────────────────────────────────────────────────────────────
 tab_analysis, tab_scanner, tab_optimizer = st.tabs(
     ["  ANALYSIS  ", "  SCANNER  ", "  OPTIMIZER  "])
 
 
-# ----------------------------------------------------------------------
-# TAB 1: ANALYSIS
-# ----------------------------------------------------------------------
+# ══════════════════════════════════════════════════════════════════════════════
+# TAB 1 — ANALYSIS
+# ══════════════════════════════════════════════════════════════════════════════
 with tab_analysis:
+
+    # ── NEW: Crypto multi-asset switcher at top ──────────────────────────────
+    st.markdown(
+        "<div class='panel-h' style='margin-bottom:.4rem;'>"
+        "<span>CRYPTO QUICK-SWITCH</span> "
+        "<span style='font-size:.58rem;color:var(--muted);'>"
+        "— select asset + market, then pick or override below</span></div>",
+        unsafe_allow_html=True,
+    )
+    crypto_asset, crypto_market = _render_crypto_switcher()
+    st.markdown("<hr style='border:none;border-top:1px solid rgba(255,255,255,0.06);margin:.6rem 0;'>",
+                unsafe_allow_html=True)
+
+    # ── Original instrument selectors ────────────────────────────────────────
     r1c1, r1c2, r1c3 = st.columns([1.3, 2.0, 1.6])
     with r1c1:
         category = st.selectbox("CATEGORY", list(INSTRUMENT_CATALOG.keys()), index=0)
@@ -488,7 +714,7 @@ with tab_analysis:
         period = st.selectbox("HISTORY", ["730d", "365d", "180d", "90d"], index=0)
     with r2c4:
         profile_name = st.selectbox("PROFILE", ["CONSERVATIVE (7/8, 2.5x)",
-                                                "AGGRESSIVE (5/8, 4x)"], index=0)
+                                                 "AGGRESSIVE (5/8, 4x)"], index=0)
     with r2c5:
         st.markdown("<div style='height:1.55rem'></div>", unsafe_allow_html=True)
         run_button = st.button("RUN DETECTION", type="primary", use_container_width=True)
@@ -501,18 +727,43 @@ with tab_analysis:
         risk_pct = st.number_input("RISK PER TRADE (%)", min_value=0.1,
                                    max_value=10.0, value=1.0, step=0.1) / 100.0
     with r3c3:
-        run_wf = st.checkbox("Also run WALK-FORWARD (honest out-of-sample, slower)",
-                             value=False)
+        run_wf = st.checkbox("Also run WALK-FORWARD (honest out-of-sample, slower)", value=False)
+
+    # ── Resolve symbol ────────────────────────────────────────────────────────
+    # Priority: custom text > catalog dropdown
+    # If no custom but category is "Crypto" (or user picked via switcher), use switcher
+    _using_crypto_switcher = (
+        not custom.strip()
+        and category == "Crypto"   # adjust to match your catalog's exact key
+    )
 
     if custom.strip():
-        symbol = custom.strip(); display_name = custom.strip()
+        symbol = custom.strip()
+        display_name = custom.strip()
+        _is_crypto_mode = False
+    elif _using_crypto_switcher:
+        # Use the asset+market from the switcher
+        symbol = (SPOT_TICKERS.get(crypto_asset, f"{crypto_asset}-USD")
+                  if crypto_market == "Spot"
+                  else PERP_SYMBOLS.get(crypto_asset, f"{crypto_asset}/USDT:USDT"))
+        display_name = f"{crypto_asset} ({crypto_market})"
+        _is_crypto_mode = True
     else:
-        symbol = INSTRUMENT_CATALOG[category][instrument]; display_name = instrument
+        symbol = INSTRUMENT_CATALOG[category][instrument]
+        display_name = instrument
+        _is_crypto_mode = False
 
     if run_button:
         try:
             with st.spinner(f"DOWNLOADING {display_name} // FITTING MODEL ..."):
-                df, features, model, states = fit_model(symbol, period, interval, n_states)
+                if _is_crypto_mode:
+                    df, features, model, states = fit_model_crypto(
+                        crypto_asset, crypto_market, period, interval, n_states
+                    )
+                else:
+                    df, features, model, states = fit_model(
+                        symbol, period, interval, n_states
+                    )
         except ConvergenceError as exc:
             st.error(f"MODEL DID NOT CONVERGE: {exc}"); st.stop()
         except SingularCovarianceError as exc:
@@ -541,38 +792,57 @@ with tab_analysis:
         last_price = float(df_aligned["Close"].iloc[-1])
 
         if current_state == bull_state and n_conf_now >= profile.min_confirmations:
-            verdict, vclass, vsub = ("LONG", "long", "Bull regime + enough confirmations")
+            verdict, vclass, vsub = ("LONG",        "long",  "Bull regime + enough confirmations")
         elif current_state == bull_state:
-            verdict, vclass, vsub = ("WAIT", "wait", f"Bull regime, only {n_conf_now}/8 confirmations")
+            verdict, vclass, vsub = ("WAIT",         "wait",  f"Bull regime, only {n_conf_now}/8 confirmations")
         elif current_state == bear_state:
-            verdict, vclass, vsub = ("STAND ASIDE", "stand", "Bear / crash regime - stay out")
+            verdict, vclass, vsub = ("STAND ASIDE",  "stand", "Bear / crash regime - stay out")
         else:
-            verdict, vclass, vsub = ("WAIT", "wait", "Neutral regime - no edge")
+            verdict, vclass, vsub = ("WAIT",         "wait",  "Neutral regime - no edge")
+
         regime_tag = ("BULLISH" if current_state == bull_state
                       else "BEARISH" if current_state == bear_state else "NEUTRAL")
+
+        # Market badge for crypto perp
+        market_badge = (
+            f"&nbsp;·&nbsp;<span style='color:var(--amber);font-size:.65rem;"
+            f"font-weight:700;'>PERP · {crypto_asset}/USDT:USDT</span>"
+            if _is_crypto_mode and crypto_market == "Perp" else ""
+        )
 
         st.markdown(
             f"""<div class="signal {vclass}">
               <div><div class="verdict">{verdict}</div>
-                <div class="sub">{display_name.upper()} &nbsp;//&nbsp; {vsub}</div></div>
-              <div class="right"><div class="big">{regime_tag} &middot; {n_conf_now}/8</div>
-                <div class="sub">STATE {current_state} | CONFIDENCE {confidence:.0f}% | LAST {last_price:,.2f}</div></div>
-            </div>""", unsafe_allow_html=True)
+                <div class="sub">{display_name.upper()}{market_badge}
+                &nbsp;//&nbsp; {vsub}</div></div>
+              <div class="right">
+                <div class="big">{regime_tag} &middot; {n_conf_now}/8</div>
+                <div class="sub">STATE {current_state} | CONFIDENCE {confidence:.0f}%
+                | LAST {last_price:,.4f}</div>
+              </div>
+            </div>""",
+            unsafe_allow_html=True,
+        )
 
         left, center, right = st.columns([1.15, 2.2, 1.25])
 
         with left:
-            body = (kv("INSTRUMENT", display_name) + kv("SYMBOL", resolve_ticker(symbol))
-                    + kv("REGIMES", str(n_states)) + kv("INTERVAL", interval)
-                    + kv("HISTORY", period) + kv("BARS", f"{n_bars:,}")
-                    + kv("LOG-LIK", f"{model.score_:,.0f}")
+            body = (kv("INSTRUMENT",  display_name)
+                    + kv("MARKET",    crypto_market if _is_crypto_mode else "Spot")
+                    + kv("SYMBOL",    symbol)
+                    + kv("REGIMES",   str(n_states))
+                    + kv("INTERVAL",  interval)
+                    + kv("HISTORY",   period)
+                    + kv("BARS",      f"{n_bars:,}")
+                    + kv("LOG-LIK",   f"{model.score_:,.0f}")
                     + kv("CONVERGED", "YES" if model.converged_ else "NO"))
             st.markdown(panel("MODEL <span>DOSSIER</span>", body), unsafe_allow_html=True)
 
             act = ("<div class='statgrid'>"
                    f"<div class='stat'><div class='n'>{n_bars:,}</div><div class='l'>BARS</div></div>"
                    f"<div class='stat bull'><div class='n'>{bull_bars:,}</div><div class='l'>BULLISH</div></div>"
-                   f"<div class='stat bear'><div class='n'>{bear_bars:,}</div><div class='l'>BEARISH</div></div></div>")
+                   f"<div class='stat bear'><div class='n'>{bear_bars:,}</div><div class='l'>BEARISH</div></div>"
+                   "</div>")
             st.markdown(panel("REGIME <span>ACTIVITY</span>", act), unsafe_allow_html=True)
 
             readings = latest_readings(df_aligned, cfg)
@@ -605,54 +875,61 @@ with tab_analysis:
                 st.warning(f"Backtest unavailable: {exc}")
                 st.session_state["_trades"] = pd.DataFrame()
 
-            # ---- Optional WALK-FORWARD (honest out-of-sample) ----
+            # Optional walk-forward
             if run_wf:
                 try:
                     with st.spinner("RUNNING WALK-FORWARD (re-fitting across folds) ..."):
-                        wf = walkforward_backtest(df, features, n_states=n_states,
-                                                  train_size=min(2000, max(500, n_bars//3)),
-                                                  test_size=300, profile=profile)
+                        wf = walkforward_backtest(
+                            df, features, n_states=n_states,
+                            train_size=min(2000, max(500, n_bars // 3)),
+                            test_size=300, profile=profile,
+                        )
                     ppy = periods_per_year_for(interval, symbol)
                     wm = metric_summary(wf["strategy_returns"], ppy,
-                                       benchmark_returns=wf["benchmark_returns"])
-                    st.markdown(metrics_cards_html(wm, len(wf["trades"]),
-                                f"WALK-FORWARD (OUT-OF-SAMPLE) <span>// {wf['n_folds']} FOLDS</span>"),
-                                unsafe_allow_html=True)
-                    st.pyplot(equity_drawdown_chart(wf["strategy_returns"],
-                                                    wf["benchmark_returns"],
-                                                    title="WALK-FORWARD EQUITY (OUT-OF-SAMPLE)"),
-                              use_container_width=True)
-                    st.caption("This is the HONEST estimate - model never saw the bars it traded. "
-                               "Trust this over the in-sample number above.")
+                                        benchmark_returns=wf["benchmark_returns"])
+                    st.markdown(metrics_cards_html(
+                        wm, len(wf["trades"]),
+                        f"WALK-FORWARD (OUT-OF-SAMPLE) <span>// {wf['n_folds']} FOLDS</span>"),
+                        unsafe_allow_html=True)
+                    st.pyplot(equity_drawdown_chart(
+                        wf["strategy_returns"], wf["benchmark_returns"],
+                        title="WALK-FORWARD EQUITY (OUT-OF-SAMPLE)"),
+                        use_container_width=True)
+                    st.caption(
+                        "This is the HONEST estimate — model never saw the bars it traded. "
+                        "Trust this over the in-sample number above."
+                    )
                 except Exception as exc:  # noqa: BLE001
                     st.warning(f"Walk-forward unavailable: {exc}")
 
         with right:
-            # ATR LEVELS + POSITION SIZING
             lv = compute_levels(df_aligned, LevelConfig())
             vs = vol_scalar_from_regimes(summary, current_state)
             ps = position_size(account_equity, lv, risk_pct=risk_pct,
                                max_leverage=profile.leverage, vol_scalar=vs)
             levels_html = (
                 f"<div class='lvl tgt'><span class='tag'>TARGET 2 ({lv['rr_target2']:.1f}R)</span>"
-                f"<span class='px'>{lv['target2']:,.2f} ({lv['target2_pct']*100:+.1f}%)</span></div>"
+                f"<span class='px'>{lv['target2']:,.4f} ({lv['target2_pct']*100:+.1f}%)</span></div>"
                 f"<div class='lvl tgt'><span class='tag'>TARGET 1 ({lv['rr_target1']:.1f}R)</span>"
-                f"<span class='px'>{lv['target1']:,.2f} ({lv['target1_pct']*100:+.1f}%)</span></div>"
+                f"<span class='px'>{lv['target1']:,.4f} ({lv['target1_pct']*100:+.1f}%)</span></div>"
                 f"<div class='lvl entry'><span class='tag'>ENTRY</span>"
-                f"<span class='px'>{lv['entry']:,.2f}</span></div>"
+                f"<span class='px'>{lv['entry']:,.4f}</span></div>"
                 f"<div class='lvl stop'><span class='tag'>STOP (2x ATR)</span>"
-                f"<span class='px'>{lv['stop']:,.2f} ({lv['stop_pct']*100:.1f}%)</span></div>")
+                f"<span class='px'>{lv['stop']:,.4f} ({lv['stop_pct']*100:.1f}%)</span></div>"
+            )
             st.markdown(panel("LEVELS <span>(ATR-BASED)</span>", levels_html),
                         unsafe_allow_html=True)
 
-            size_html = (kv("ACCOUNT", f"${account_equity:,.0f}")
-                         + kv("RISK/TRADE", f"{risk_pct*100:.1f}%  (${account_equity*risk_pct:,.0f})")
-                         + kv("VOL SCALAR", f"{vs:.2f}")
-                         + kv("POSITION", f"{ps['units']:.4f} units")
-                         + kv("NOTIONAL", f"${ps['notional']:,.0f}")
-                         + kv("LEVERAGE", f"{ps['leverage_used']:.2f}x"
-                              + (" (capped)" if ps['capped'] else ""))
-                         + kv("$ AT RISK", f"${ps['dollar_risk']:,.0f}"))
+            size_html = (
+                kv("ACCOUNT",  f"${account_equity:,.0f}")
+                + kv("RISK/TRADE", f"{risk_pct*100:.1f}%  (${account_equity*risk_pct:,.0f})")
+                + kv("VOL SCALAR", f"{vs:.2f}")
+                + kv("POSITION",   f"{ps['units']:.6f} units")
+                + kv("NOTIONAL",   f"${ps['notional']:,.2f}")
+                + kv("LEVERAGE",   f"{ps['leverage_used']:.2f}x"
+                     + (" (capped)" if ps["capped"] else ""))
+                + kv("$ AT RISK",  f"${ps['dollar_risk']:,.2f}")
+            )
             st.markdown(panel("POSITION <span>SIZING</span>", size_html),
                         unsafe_allow_html=True)
 
@@ -660,11 +937,14 @@ with tab_analysis:
             for sid, row in summary.sort_values("mean_return", ascending=False).iterrows():
                 lab = row["label"] or "NEUTRAL REGIME"
                 tag = ("BULL" if sid == bull_state else "BEAR" if sid == bear_state else "NEUTRAL")
-                items += ("<div class='op'>"
-                          f"<div class='code'>STATE {int(sid)} &mdash; {tag}</div>"
-                          f"<div class='ttl'>{lab}</div>"
-                          f"<div class='meta'>&mu; {row['mean_return']:+.5f} &nbsp; "
-                          f"&sigma; {row['return_volatility']:.5f} &nbsp; n={int(row['n_obs']):,}</div></div>")
+                items += (
+                    "<div class='op'>"
+                    f"<div class='code'>STATE {int(sid)} &mdash; {tag}</div>"
+                    f"<div class='ttl'>{lab}</div>"
+                    f"<div class='meta'>&mu; {row['mean_return']:+.5f} &nbsp; "
+                    f"&sigma; {row['return_volatility']:.5f} &nbsp; n={int(row['n_obs']):,}</div>"
+                    "</div>"
+                )
             st.markdown(panel(f"REGIME <span>LIST ({n_states})</span>", items),
                         unsafe_allow_html=True)
 
@@ -672,36 +952,41 @@ with tab_analysis:
         if isinstance(trades_df, pd.DataFrame) and not trades_df.empty:
             show = trades_df[["entry_time", "exit_time", "bars_held",
                               "leveraged_return_pct", "exit_reason"]].copy()
-            show["leveraged_return_pct"] = (show["leveraged_return_pct"]*100).round(2)
+            show["leveraged_return_pct"] = (show["leveraged_return_pct"] * 100).round(2)
             show = show.rename(columns={"leveraged_return_pct": "ret_%"})
             st.markdown("<div class='panel-h'>TRADE LOG</div>", unsafe_allow_html=True)
             st.dataframe(show.tail(15), use_container_width=True, height=300, hide_index=True)
 
         st.caption(
-            "LEVELS, SIZING and the LIVE SIGNAL describe the latest bar - not a "
+            "LEVELS, SIZING and the LIVE SIGNAL describe the latest bar — not a "
             "recommendation. In-sample backtest is optimistic; tick walk-forward "
-            "for the honest number. Research only - not financial advice."
+            "for the honest number. Research only — not financial advice."
         )
     else:
         st.markdown(
             "<div class='panel'><div class='panel-h'>STANDBY</div>"
-            "<div class='kv'><span class='k'>Pick CATEGORY + INSTRUMENT, set your "
-            "account/risk, then press <b style='color:#c0392b'>RUN DETECTION</b>.</span></div></div>",
-            unsafe_allow_html=True)
+            "<div class='kv'><span class='k'>Pick CATEGORY + INSTRUMENT (or use the "
+            "crypto switcher above), set your account/risk, then press "
+            "<b style='color:#c0392b'>RUN DETECTION</b>.</span></div></div>",
+            unsafe_allow_html=True,
+        )
 
 
-# ----------------------------------------------------------------------
-# TAB 2: SCANNER
-# ----------------------------------------------------------------------
+# ══════════════════════════════════════════════════════════════════════════════
+# TAB 2 — SCANNER  (unchanged)
+# ══════════════════════════════════════════════════════════════════════════════
 with tab_scanner:
-    st.markdown("<div class='term-sub'>Scan every instrument and rank by current "
-                "signal. LONG first. (Fits one model per instrument - takes a "
-                "minute.)</div>", unsafe_allow_html=True)
+    st.markdown(
+        "<div class='term-sub'>Scan every instrument and rank by current "
+        "signal. LONG first. (Fits one model per instrument — takes a minute.)</div>",
+        unsafe_allow_html=True,
+    )
     s1, s2, s3, s4 = st.columns([1.4, 0.9, 0.9, 1.4])
     with s1:
-        scan_category = st.selectbox("SCOPE",
-                                     ["ALL"] + list(INSTRUMENT_CATALOG.keys()), index=0,
-                                     key="scan_scope")
+        scan_category = st.selectbox(
+            "SCOPE", ["ALL"] + list(INSTRUMENT_CATALOG.keys()),
+            index=0, key="scan_scope",
+        )
     with s2:
         scan_states = st.slider("REGIMES", 2, 8, 7, key="scan_states")
     with s3:
@@ -715,55 +1000,66 @@ with tab_scanner:
                        else INSTRUMENT_CATALOG[scan_category])
         prog = st.progress(0.0, text="Scanning...")
         def _cb(done, total, name):
-            prog.progress(done/total, text=f"Scanning {name} ({done}/{total})")
+            prog.progress(done / total, text=f"Scanning {name} ({done}/{total})")
         try:
-            result = scan(instruments, n_states=scan_states, period="365d",
-                          interval=scan_interval,
-                          profile=StrategyProfile.conservative(), progress_cb=_cb)
+            result = scan(
+                instruments, n_states=scan_states, period="365d",
+                interval=scan_interval,
+                profile=StrategyProfile.conservative(), progress_cb=_cb,
+            )
             prog.empty()
             if result.empty:
                 st.warning("No results.")
             else:
-                longs = int((result["verdict"] == "LONG").sum())
-                waits = int((result["verdict"] == "WAIT").sum())
+                longs  = int((result["verdict"] == "LONG").sum())
+                waits  = int((result["verdict"] == "WAIT").sum())
                 stands = int((result["verdict"] == "STAND ASIDE").sum())
-                cards = (metric_card("LONG", longs, "{:d}", longs>0)
-                         + metric_card("WAIT", waits, "{:d}")
-                         + metric_card("STAND ASIDE", stands, "{:d}", False if stands else None)
-                         + metric_card("SCANNED", len(result), "{:d}"))
+                cards = (
+                    metric_card("LONG",       longs,       "{:d}", longs > 0)
+                    + metric_card("WAIT",     waits,       "{:d}")
+                    + metric_card("STAND ASIDE", stands,   "{:d}", False if stands else None)
+                    + metric_card("SCANNED",  len(result), "{:d}")
+                )
                 st.markdown(f"<div class='metricgrid'>{cards}</div>", unsafe_allow_html=True)
                 disp = result[["instrument", "verdict", "regime", "confirmations",
                                "confidence", "last_price", "status"]].copy()
                 disp["confidence"] = disp["confidence"].round(0)
-                disp["last_price"] = disp["last_price"].round(2)
+                disp["last_price"] = disp["last_price"].round(4)
                 st.dataframe(disp, use_container_width=True, height=560, hide_index=True)
-                st.caption("Ranked: LONG first, then by confirmation count and confidence. "
-                           "Research only - not financial advice.")
+                st.caption(
+                    "Ranked: LONG first, then by confirmation count and confidence. "
+                    "Research only — not financial advice."
+                )
         except Exception as exc:  # noqa: BLE001
             prog.empty(); st.error(f"Scanner error: {exc}")
     else:
-        st.markdown("<div class='panel'><div class='panel-h'>STANDBY</div>"
-                    "<div class='kv'><span class='k'>Press <b style='color:#c0392b'>"
-                    "RUN SCANNER</b> to scan all instruments.</span></div></div>",
-                    unsafe_allow_html=True)
+        st.markdown(
+            "<div class='panel'><div class='panel-h'>STANDBY</div>"
+            "<div class='kv'><span class='k'>Press <b style='color:#c0392b'>"
+            "RUN SCANNER</b> to scan all instruments.</span></div></div>",
+            unsafe_allow_html=True,
+        )
 
 
-# ----------------------------------------------------------------------
-# TAB 3: OPTIMIZER
-# ----------------------------------------------------------------------
+# ══════════════════════════════════════════════════════════════════════════════
+# TAB 3 — OPTIMIZER  (unchanged)
+# ══════════════════════════════════════════════════════════════════════════════
 with tab_optimizer:
-    st.markdown("<div class='term-sub'>Grid-search strategy parameters, scored by "
-                "WALK-FORWARD (out-of-sample) performance - not in-sample. The "
-                "winner is the one that generalised, not the one that memorised.</div>",
-                unsafe_allow_html=True)
+    st.markdown(
+        "<div class='term-sub'>Grid-search strategy parameters, scored by "
+        "WALK-FORWARD (out-of-sample) performance — not in-sample. The "
+        "winner is the one that generalised, not the one that memorised.</div>",
+        unsafe_allow_html=True,
+    )
     o1, o2, o3, o4, o5 = st.columns([1.3, 1.7, 0.9, 0.9, 1.2])
     with o1:
         opt_category = st.selectbox("CATEGORY", list(INSTRUMENT_CATALOG.keys()),
                                     index=0, key="opt_cat")
     with o2:
-        opt_instrument = st.selectbox("INSTRUMENT",
-                                      list(INSTRUMENT_CATALOG[opt_category].keys()),
-                                      index=0, key="opt_inst")
+        opt_instrument = st.selectbox(
+            "INSTRUMENT", list(INSTRUMENT_CATALOG[opt_category].keys()),
+            index=0, key="opt_inst",
+        )
     with o3:
         opt_states = st.slider("REGIMES", 2, 8, 7, key="opt_states")
     with o4:
@@ -773,12 +1069,18 @@ with tab_optimizer:
         st.markdown("<div style='height:1.55rem'></div>", unsafe_allow_html=True)
         opt_button = st.button("RUN OPTIMIZER", type="primary", use_container_width=True)
 
-    st.markdown(f"<div class='term-sub'>Search grid: min_confirmations "
-                f"{DEFAULT_GRID['min_confirmations']}, leverage "
-                f"{DEFAULT_GRID['leverage']}, adx_min {DEFAULT_GRID['adx_min']}, "
-                f"rsi_max {DEFAULT_GRID['rsi_max']} "
-                f"({len(DEFAULT_GRID['min_confirmations'])*len(DEFAULT_GRID['leverage'])*len(DEFAULT_GRID['adx_min'])*len(DEFAULT_GRID['rsi_max'])} "
-                f"combinations).</div>", unsafe_allow_html=True)
+    _n_combos = (len(DEFAULT_GRID["min_confirmations"])
+                 * len(DEFAULT_GRID["leverage"])
+                 * len(DEFAULT_GRID["adx_min"])
+                 * len(DEFAULT_GRID["rsi_max"]))
+    st.markdown(
+        f"<div class='term-sub'>Search grid: min_confirmations "
+        f"{DEFAULT_GRID['min_confirmations']}, leverage "
+        f"{DEFAULT_GRID['leverage']}, adx_min {DEFAULT_GRID['adx_min']}, "
+        f"rsi_max {DEFAULT_GRID['rsi_max']} "
+        f"({_n_combos} combinations).</div>",
+        unsafe_allow_html=True,
+    )
 
     if opt_button:
         opt_symbol = INSTRUMENT_CATALOG[opt_category][opt_instrument]
@@ -788,47 +1090,56 @@ with tab_optimizer:
                 feats_o = build_features(df_o)
             prog = st.progress(0.0, text="Optimizing...")
             def _ocb(done, total, label):
-                prog.progress(done/total, text=f"[{done}/{total}] {label}")
-            res = optimize(df_o, feats_o, periods_per_year_for("1h", opt_symbol),
-                           n_states=opt_states, train_size=2000, test_size=400,
-                           objective=opt_objective, progress_cb=_ocb)
+                prog.progress(done / total, text=f"[{done}/{total}] {label}")
+            res = optimize(
+                df_o, feats_o, periods_per_year_for("1h", opt_symbol),
+                n_states=opt_states, train_size=2000, test_size=400,
+                objective=opt_objective, progress_cb=_ocb,
+            )
             prog.empty()
             if res.empty:
                 st.warning("No optimizer results.")
             else:
                 best = res.iloc[0]
-                cards = (metric_card("BEST SHARPE", best["sharpe"], "{:.2f}", best["sharpe"]>1)
-                         + metric_card("MAX DD", best["max_drawdown"]*100, "{:.1f}%", best["max_drawdown"]>-0.25)
-                         + metric_card("RETURN", best["total_return"]*100, "{:+.1f}%", best["total_return"]>0)
-                         + metric_card("MIN CONF", int(best["min_confirmations"]), "{:d}")
-                         + metric_card("LEVERAGE", best["leverage"], "{:.1f}x")
-                         + metric_card("ADX MIN", best["adx_min"], "{:.0f}"))
-                st.markdown(panel("BEST PARAMETERS <span>(BY WALK-FORWARD)</span>",
-                                  f"<div class='metricgrid'>{cards}</div>"),
-                            unsafe_allow_html=True)
+                cards = (
+                    metric_card("BEST SHARPE", best["sharpe"],              "{:.2f}",  best["sharpe"] > 1)
+                    + metric_card("MAX DD",      best["max_drawdown"]*100,  "{:.1f}%", best["max_drawdown"] > -0.25)
+                    + metric_card("RETURN",      best["total_return"]*100,  "{:+.1f}%",best["total_return"] > 0)
+                    + metric_card("MIN CONF",    int(best["min_confirmations"]), "{:d}")
+                    + metric_card("LEVERAGE",    best["leverage"],           "{:.1f}x")
+                    + metric_card("ADX MIN",     best["adx_min"],            "{:.0f}")
+                )
+                st.markdown(
+                    panel("BEST PARAMETERS <span>(BY WALK-FORWARD)</span>",
+                          f"<div class='metricgrid'>{cards}</div>"),
+                    unsafe_allow_html=True,
+                )
                 show = res.copy()
                 for c in ["total_return", "max_drawdown", "win_rate"]:
-                    if c in show: show[c] = (show[c]*100).round(1)
+                    if c in show: show[c] = (show[c] * 100).round(1)
                 for c in ["sharpe", "calmar"]:
                     if c in show: show[c] = show[c].round(2)
                 st.dataframe(show, use_container_width=True, height=460, hide_index=True)
-                st.caption("Every row scored out-of-sample via walk-forward. "
-                           "Even the best may be negative - that is honest. "
-                           "Research only - not financial advice.")
+                st.caption(
+                    "Every row scored out-of-sample via walk-forward. "
+                    "Even the best may be negative — that is honest. "
+                    "Research only — not financial advice."
+                )
         except Exception as exc:  # noqa: BLE001
             st.error(f"Optimizer error: {exc}")
     else:
-        st.markdown("<div class='panel'><div class='panel-h'>STANDBY</div>"
-                    "<div class='kv'><span class='k'>Pick an instrument and press "
-                    "<b style='color:#c0392b'>RUN OPTIMIZER</b>. This re-fits the model "
-                    "many times - give it a minute.</span></div></div>",
-                    unsafe_allow_html=True)
+        st.markdown(
+            "<div class='panel'><div class='panel-h'>STANDBY</div>"
+            "<div class='kv'><span class='k'>Pick an instrument and press "
+            "<b style='color:#c0392b'>RUN OPTIMIZER</b>. This re-fits the model "
+            "many times — give it a minute.</span></div></div>",
+            unsafe_allow_html=True,
+        )
 
 
-
-# ======================================================================
-# FOOTER (Cryptoverse-style)
-# ======================================================================
+# ─────────────────────────────────────────────────────────────────────────────
+# Footer  (unchanged)
+# ─────────────────────────────────────────────────────────────────────────────
 st.markdown(
     f"""
     <div class="footer">
@@ -844,13 +1155,16 @@ st.markdown(
       </div>
       <div class="f-cols">
         <div class="f-col">
-          <div class="brand" style="margin-bottom:.6rem;"><span class="logo">{LOGO_SVG}</span>Regime Terminal</div>
+          <div class="brand" style="margin-bottom:.6rem;">
+            <span class="logo">{LOGO_SVG}</span>Regime Terminal
+          </div>
           <p style="color:var(--muted); font-size:.78rem; max-width:220px;">
           HMM-based market regime detection &amp; strategy research toolkit.</p>
         </div>
         <div class="f-col">
           <h4>Tools</h4>
-          <a>Analysis</a><a>Scanner</a><a>Optimizer</a><a>Walk-forward</a><a>Position sizing</a>
+          <a>Analysis</a><a>Scanner</a><a>Optimizer</a>
+          <a>Walk-forward</a><a>Position sizing</a>
         </div>
         <div class="f-col">
           <h4>Instruments</h4>
@@ -866,7 +1180,8 @@ st.markdown(
       </div>
       <div class="f-bottom">
         &copy; 2026 Regime Terminal &middot;
-        Join the <a href="https://discord.gg/MSXdaexYdH" target="_blank" style="color:var(--accent);">Discord</a>
+        Join the <a href="https://discord.gg/MSXdaexYdH" target="_blank"
+          style="color:var(--accent);">Discord</a>
         &middot; Research only &mdash; not financial advice.
       </div>
     </div>
