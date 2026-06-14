@@ -1,0 +1,48 @@
+name: Refresh regime data
+
+on:
+  schedule:
+    # Top of every hour (UTC). Adjust cadence as you like.
+    - cron: "5 * * * *"
+  workflow_dispatch:
+    inputs:
+      refit:
+        description: "Re-fit the model instead of decoding the saved one"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: regime-refresh
+  cancel-in-progress: true
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install deps
+        run: pip install -r requirements.txt
+
+      - name: Export regime data
+        run: python scripts/export_regime.py
+
+      - name: Commit if changed
+        run: |
+          git config user.name  "regime-bot"
+          git config user.email "actions@github.com"
+          if ! git diff --quiet -- web/data/regimes.json; then
+            git add web/data/regimes.json
+            git commit -m "chore(data): refresh regime snapshot [skip ci]"
+            git push
+          else
+            echo "No regime change; nothing to commit."
+          fi
