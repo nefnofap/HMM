@@ -20,7 +20,7 @@ AUTHORIZE_URL = "https://discord.com/oauth2/authorize"
 TOKEN_URL     = "https://discord.com/api/oauth2/token"
 SCOPES        = "identify guilds"
 
-_CLIENT_ID     = "1513610614549905588"
+_CLIENT_ID     = "1512877687755112609"
 _CLIENT_SECRET = "TxobYzh5Ti7rYsmYVIs8Q0jgi3jrYSsj"
 _REDIRECT_URI  = "https://luciiregime.streamlit.app/"
 _GUILD_ID      = "1478370205523775699"
