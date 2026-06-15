@@ -191,7 +191,101 @@ def post_webhook(webhook_url: str, embeds: List[dict], *,
 
 
 # ──────────────────────────────────────────────────────────────────────────
-# Orchestrator
+# Scanner LONG-verdict alerts (the "the website says LONG" signal)
+# ──────────────────────────────────────────────────────────────────────────
+def _fmt_price(x) -> str:
+    try:
+        x = float(x)
+        if x != x:  # NaN
+            return "—"
+        return f"{x:,.4f}".rstrip("0").rstrip(".") if x < 1000 else f"{x:,.2f}"
+    except (TypeError, ValueError):
+        return "—"
+
+
+def build_scanner_embed(row: dict, *, max_confirmations: int = 8,
+                        timestamp: Optional[str] = None) -> dict:
+    """Build a Discord embed from one scanner row whose verdict is LONG."""
+    conf = float(row.get("confidence", 0.0) or 0.0)
+    nconf = int(row.get("confirmations", 0) or 0)
+    name = row.get("instrument") or row.get("symbol") or "?"
+    embed = {
+        "title": f"🟢 LONG · {name}",
+        "description": ("The scanner is flashing **LONG** — bull regime with "
+                        "entry confirmations met."),
+        "color": COLOR_BULL,
+        "fields": [
+            {"name": "Verdict", "value": "**LONG**", "inline": True},
+            {"name": "Confirmations", "value": f"{nconf} / {max_confirmations}",
+             "inline": True},
+            {"name": "Confidence", "value": f"{conf:.0f}%", "inline": True},
+            {"name": "Regime", "value": str(row.get("regime", "BULLISH")),
+             "inline": True},
+            {"name": "Last price", "value": _fmt_price(row.get("last_price")),
+             "inline": True},
+        ],
+        "footer": {"text": "HMM Regime Radar · research only, not financial advice"},
+    }
+    if timestamp:
+        embed["timestamp"] = timestamp
+    return embed
+
+
+def notify_scanner_signals(rows: List[dict], *, webhook_url: Optional[str] = None,
+                           state_path: str = "web/data/long_signal_state.json",
+                           min_confidence_pct: Optional[float] = None,
+                           username: Optional[str] = None,
+                           timestamp: Optional[str] = None,
+                           dry_run: bool = False) -> List[dict]:
+    """
+    Alert on the scanner's LONG verdict — i.e. exactly what the website shows.
+
+    ``rows`` is the list of dicts produced by ``scanner.scan(...).to_dict('records')``.
+    Fires once per transition INTO ``verdict == 'LONG'`` (optionally gated by a
+    confidence floor, percent 0..100). When an instrument leaves LONG, its new
+    verdict is recorded so the next LONG re-alerts.
+
+    Returns the rows that were (or, in ``dry_run``, would be) sent.
+    """
+    webhook_url = webhook_url or os.getenv("DISCORD_WEBHOOK_URL", "").strip()
+    if min_confidence_pct is None:
+        min_confidence_pct = float(os.getenv("SIGNAL_MIN_CONFIDENCE_PCT", "0"))
+    if username is None:
+        username = os.getenv("SIGNAL_WEBHOOK_NAME", DEFAULT_USERNAME)
+
+    prev = load_state(state_path)
+    new_state = dict(prev)
+    to_send: List[dict] = []
+
+    for row in rows:
+        key = str(row.get("instrument") or row.get("symbol") or "")
+        if not key:
+            continue
+        verdict = str(row.get("verdict", "-")).upper()
+        conf = float(row.get("confidence", 0.0) or 0.0)
+        new_state[key] = verdict  # record current verdict for de-dup
+
+        is_long = verdict == "LONG" and conf >= min_confidence_pct
+        if is_long and prev.get(key) != "LONG":
+            to_send.append(row)
+
+    if dry_run:
+        return to_send
+
+    if to_send and webhook_url:
+        embeds = [build_scanner_embed(r, timestamp=timestamp) for r in to_send]
+        for i in range(0, len(embeds), 10):
+            try:
+                post_webhook(webhook_url, embeds[i:i + 10], username=username)
+            except (urllib.error.URLError, urllib.error.HTTPError, OSError) as exc:
+                print(f"[discord] delivery failed: {exc}")
+
+    save_state(state_path, new_state)
+    return to_send if webhook_url else []
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# Orchestrator (regime-label variant — kept for completeness)
 # ──────────────────────────────────────────────────────────────────────────
 def notify_from_bundle(bundle: dict, *, webhook_url: Optional[str] = None,
                        state_path: str = "web/data/signal_state.json",
