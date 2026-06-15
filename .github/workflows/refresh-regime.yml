@@ -35,12 +35,23 @@ jobs:
       - name: Export regime data
         run: python scripts/export_regime.py
 
+      - name: Push Discord signal alerts
+        # No-op unless DISCORD_WEBHOOK_URL is set as a repository secret.
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          # Optional tuning (safe to omit — sensible defaults apply):
+          # SIGNAL_MIN_CONFIDENCE: "0.40"
+          # SIGNAL_DIRECTIONS: "bull,bear"
+          # SIGNAL_ALERT_NEUTRAL: "0"
+          # SIGNAL_WEBHOOK_NAME: "Regime Radar"
+        run: python scripts/notify_signals.py
+
       - name: Commit if changed
         run: |
           git config user.name  "regime-bot"
           git config user.email "actions@github.com"
-          if ! git diff --quiet -- web/data/regimes.json; then
-            git add web/data/regimes.json
+          if ! git diff --quiet -- web/data/regimes.json web/data/signal_state.json; then
+            git add web/data/regimes.json web/data/signal_state.json
             git commit -m "chore(data): refresh regime snapshot [skip ci]"
             git push
           else
