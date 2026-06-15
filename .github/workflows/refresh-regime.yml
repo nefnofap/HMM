@@ -35,12 +35,24 @@ jobs:
       - name: Export regime data
         run: python scripts/export_regime.py
 
+      - name: Push Discord LONG signals
+        # Scans the watchlist and alerts when the scanner flips to LONG.
+        # No-op unless DISCORD_WEBHOOK_URL is set as a repository secret.
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          # Optional tuning (safe to omit — sensible defaults apply):
+          # SIGNAL_WATCHLIST: "Gold (XAUUSD),Bitcoin (BTC)"
+          # SIGNAL_PROFILE: "conservative"          # or "aggressive" (5/8)
+          # SIGNAL_MIN_CONFIDENCE_PCT: "0"          # raise to e.g. 95 for near-certain only
+          # SIGNAL_WEBHOOK_NAME: "Regime Radar"
+        run: python scripts/scan_signals.py
+
       - name: Commit if changed
         run: |
           git config user.name  "regime-bot"
           git config user.email "actions@github.com"
-          if ! git diff --quiet -- web/data/regimes.json; then
-            git add web/data/regimes.json
+          if ! git diff --quiet -- web/data/regimes.json web/data/signal_state.json web/data/long_signal_state.json; then
+            git add web/data/regimes.json web/data/signal_state.json web/data/long_signal_state.json
             git commit -m "chore(data): refresh regime snapshot [skip ci]"
             git push
           else
