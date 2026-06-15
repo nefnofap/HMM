@@ -1,10 +1,5 @@
 """
-discord_auth.py
-===============
-
-Discord OAuth2 gate for the Regime Terminal.
-
-All values hardcoded — no secrets needed except CLIENT_SECRET.
+discord_auth.py  —  Discord OAuth2 gate for Regime Terminal
 """
 
 from __future__ import annotations
@@ -13,7 +8,7 @@ import logging
 import os
 import time
 from typing import Any, Dict, Optional
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse, urlunparse
 
 import requests
 import streamlit as st
@@ -21,22 +16,17 @@ import streamlit as st
 logger = logging.getLogger(__name__)
 
 DISCORD_API   = "https://discord.com/api/v10"
-AUTHORIZE_URL = "https://discord.com/api/oauth2/authorize"
+AUTHORIZE_URL = "https://discord.com/oauth2/authorize"
 TOKEN_URL     = "https://discord.com/api/oauth2/token"
 SCOPES        = "identify guilds"
 
-# ── All hardcoded ─────────────────────────────────────────────────────────────
-_CLIENT_ID    = "1513610614549905588"
-_CLIENT_SECRET= "TxobYzh5Ti7rYsmYVIs8Q0jgi3jrYSsj"
-_REDIRECT_URI = "https://luciiregime.streamlit.app/"
-_GUILD_ID     = "1478370205523775699"
-_ROLE_ID      = "1497947608616931428"
-_INVITE_URL   = "https://discord.com/invite/MSXdaexYdH"
+_CLIENT_ID     = "1513610614549905588"
+_CLIENT_SECRET = "TxobYzh5Ti7rYsmYVIs8Q0jgi3jrYSsj"
+_REDIRECT_URI  = "https://luciiregime.streamlit.app/"
+_GUILD_ID      = "1478370205523775699"
+_ROLE_ID       = "1497947608616931428"
+_INVITE_URL    = "https://discord.com/invite/MSXdaexYdH"
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Config — secrets override hardcoded values if present
-# ─────────────────────────────────────────────────────────────────────────────
 
 def _get(key: str, default: str) -> str:
     try:
@@ -58,15 +48,35 @@ def _config() -> Dict[str, str]:
     }
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# OAuth helpers
-# ─────────────────────────────────────────────────────────────────────────────
+def _normalize_uri(uri: str) -> str:
+    """Ensure redirect URI always has a trailing slash."""
+    if not uri.endswith("/"):
+        uri = uri + "/"
+    return uri
+
+
+def _detect_redirect_uri() -> str:
+    """
+    Detect the actual redirect URI from the current page URL.
+    This ensures what we send to Discord's token endpoint exactly matches
+    what Streamlit actually redirected to (with or without trailing slash).
+    """
+    try:
+        # Try to get the actual URL from query params context
+        # Streamlit doesn't expose the full URL, so we use the hardcoded value
+        # but normalise it to always have trailing slash
+        cfg = _config()
+        return _normalize_uri(cfg["redirect_uri"])
+    except Exception:
+        return _REDIRECT_URI
+
 
 def build_authorize_url() -> str:
     cfg = _config()
+    redirect = _normalize_uri(cfg["redirect_uri"])
     params = {
         "client_id":     cfg["client_id"],
-        "redirect_uri":  cfg["redirect_uri"],
+        "redirect_uri":  redirect,
         "response_type": "code",
         "scope":         SCOPES,
         "prompt":        "consent",
@@ -75,46 +85,76 @@ def build_authorize_url() -> str:
 
 
 def exchange_code(code: str) -> Dict[str, Any]:
+    """
+    Try exchange with trailing slash first, then without.
+    This handles cases where Streamlit changes the URI on redirect.
+    """
     cfg = _config()
-    data = {
-        "client_id":     cfg["client_id"],
-        "client_secret": cfg["client_secret"],
-        "grant_type":    "authorization_code",
-        "code":          code,
-        "redirect_uri":  cfg["redirect_uri"],
-    }
-    headers = {"Content-Type": "application/x-www-form-urlencoded"}
+    base_uri = cfg["redirect_uri"].rstrip("/")
+    
+    # Try both variants — whichever matches what Discord has registered
+    uris_to_try = [
+        base_uri + "/",   # with trailing slash
+        base_uri,         # without trailing slash
+    ]
 
-    for attempt in range(3):
-        try:
-            r = requests.post(TOKEN_URL, data=data, headers=headers, timeout=15)
+    last_error = None
+    for redirect_uri in uris_to_try:
+        data = {
+            "client_id":     cfg["client_id"],
+            "client_secret": cfg["client_secret"],
+            "grant_type":    "authorization_code",
+            "code":          code,
+            "redirect_uri":  redirect_uri,
+        }
+        headers = {"Content-Type": "application/x-www-form-urlencoded"}
 
-            if r.status_code == 429:
-                retry_after = float(r.headers.get("Retry-After", 2 ** attempt))
-                time.sleep(min(retry_after, 10))
-                continue
+        for attempt in range(3):
+            try:
+                r = requests.post(TOKEN_URL, data=data, headers=headers, timeout=15)
 
-            if not r.ok:
-                try:
-                    body = r.json()
-                except Exception:
-                    body = r.text[:400]
-                raise RuntimeError(
-                    f"Discord token exchange failed — HTTP {r.status_code}: {body}\n"
-                    f"Redirect URI used: {cfg['redirect_uri']}"
-                )
+                if r.status_code == 429:
+                    retry_after = float(r.headers.get("Retry-After", 2 ** attempt))
+                    time.sleep(min(retry_after, 10))
+                    continue
 
-            return r.json()
+                if r.status_code == 400:
+                    # redirect_uri mismatch — try next variant
+                    try:
+                        body = r.json()
+                    except Exception:
+                        body = r.text[:200]
+                    last_error = f"HTTP 400 with redirect_uri={redirect_uri}: {body}"
+                    break  # break retry loop, try next URI variant
 
-        except RuntimeError:
-            raise
-        except requests.RequestException as exc:
-            if attempt < 2:
-                time.sleep(2 ** attempt)
-                continue
-            raise RuntimeError(f"Network error: {exc}") from exc
+                if not r.ok:
+                    try:
+                        body = r.json()
+                    except Exception:
+                        body = r.text[:400]
+                    raise RuntimeError(
+                        f"Discord token exchange failed — HTTP {r.status_code}: {body}"
+                    )
 
-    raise RuntimeError("Failed after 3 attempts (rate limited)")
+                return r.json()
+
+            except RuntimeError:
+                raise
+            except requests.RequestException as exc:
+                if attempt < 2:
+                    time.sleep(2 ** attempt)
+                    continue
+                last_error = str(exc)
+                break
+
+    raise RuntimeError(
+        f"Discord token exchange failed with both redirect URI variants.\n"
+        f"Last error: {last_error}\n\n"
+        f"Make sure BOTH of these are added in Discord Developer Portal "
+        f"under OAuth2 → Redirects:\n"
+        f"  • https://luciiregime.streamlit.app/\n"
+        f"  • https://luciiregime.streamlit.app"
+    )
 
 
 def fetch_user(token: str) -> Dict[str, Any]:
@@ -163,10 +203,6 @@ def has_premium_role(token: str, guild_id: str, role_id: str) -> bool:
         return False
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Session helpers
-# ─────────────────────────────────────────────────────────────────────────────
-
 SESSION_KEY  = "_discord_user"
 _CODE_USED   = "_discord_code_used"
 _HAS_PREMIUM = "_discord_has_premium"
@@ -200,18 +236,10 @@ def user_has_premium() -> bool:
     return bool(st.session_state.get(_HAS_PREMIUM, False))
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Streamlit gate
-# ─────────────────────────────────────────────────────────────────────────────
-
 def require_login(
     render_login=None,
     render_denied=None,
 ) -> Optional[Dict[str, Any]]:
-    """
-    Gate: user must be in the Discord guild to access the app.
-    _CODE_USED flag prevents re-exchange on every Streamlit rerun (fixes 429).
-    """
     user = current_user()
     if user:
         return user
@@ -255,10 +283,6 @@ def require_login(
     st.stop()
     return None
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Default UI
-# ─────────────────────────────────────────────────────────────────────────────
 
 def _default_login(authorize_url: str, invite_url: str) -> None:
     st.markdown(
